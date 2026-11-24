@@ -1,4 +1,4 @@
-﻿/* ==========================================================
+/* ==========================================================
    Vectyo · script del sitio
    ⚠️ CONFIGURACIÓN: cambiar acá el número y las redes.
    Se actualizan solos en todas las páginas.
