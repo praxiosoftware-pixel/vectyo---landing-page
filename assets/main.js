@@ -1,11 +1,11 @@
-/* ==========================================================
+﻿/* ==========================================================
    Vectyo · script del sitio
    ⚠️ CONFIGURACIÓN: cambiar acá el número y las redes.
    Se actualizan solos en todas las páginas.
    ========================================================== */
 const VECTYO = {
   // Número de WhatsApp con código de país, sin + ni espacios. Ej: 5493511234567
-  whatsapp: "549XXXXXXXXXX",
+  whatsapp: "5492617776907",
   instagram: "https://www.instagram.com/vectyo",
   instagramUsuario: "@vectyo",
 };
