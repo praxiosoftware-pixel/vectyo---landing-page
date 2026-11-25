@@ -1,5 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Vectyo">
-<title>Vectyo</title>
-<rect width="512" height="512" rx="96" fill="#000000"/>
-<path transform="translate(74.24 105.12) scale(3.35)" fill="#FFFFFF" fill-rule="evenodd" d="M0 0 L40 0 L77 45 L40 90 L0 90 L37 45 Z M51.5 45 L22.72 80 L33.72 80 L62.5 45 L33.72 10 L22.72 10 Z M52 0 L76 0 L113 45 L76 90 L52 90 L89 45 Z"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Vectyo"><rect width="512" height="512" rx="96" fill="#542F3C"/><g transform="translate(74.24 105.12) scale(3.35)"><path fill="#FFFFFF" fill-rule="evenodd" d="M0 0 L40 0 L77 45 L40 90 L0 90 L37 45 Z M51.5 45 L22.72 80 L33.72 80 L62.5 45 L33.72 10 L22.72 10 Z M52 0 L76 0 L113 45 L76 90 L52 90 L89 45 Z"/></g></svg>

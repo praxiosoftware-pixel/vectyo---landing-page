@@ -227,9 +227,8 @@ if (visor && typeof visor.showModal === "function") {
 (() => {
   // Solo los tonos de la paleta que se leen bien sobre blanco (AA)
   const COLORES = [
-    ["Terracota", "#A64D38"],
-    ["Ladrillo", "#8B362C"],
-    ["Negro cálido", "#1F1714"],
+    ["Azul Vector", "#0057B8"],
+    ["Ciruela Vectyo", "#542F3C"],
   ];
   const leer = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
   const escribir = (k, v) => { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* nada */ } };

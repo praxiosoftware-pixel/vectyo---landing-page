@@ -1,30 +1,33 @@
 /* ==========================================================
-   Vectyo · sistema de diseño v2 (estilo galería)
-   Blanco, mucho aire, el contenido visual manda.
-   Un único acento: --acento. Para cambiar el color de marca, cambiar solo esa variable.
+   Vectyo · sistema de diseño v3 (Brand Book v1.0, 2026-11-24)
+   Manual: marca/Vectyo-Brand-Book.pdf · tokens: marca/kit/tokens.css
+   Ciruela domina, azul marca la acción. El hover del azul es ciruela.
+   Regla: nunca texto azul sobre ciruela ni ciruela sobre azul (1,65:1).
    ========================================================== */
 
 :root {
-  /* Paleta de marca (tierra): dorado → ladrillo */
-  --oro: #d2ae61;      /* solo sobre fondos oscuros o decorativo (2,1:1 sobre blanco) */
-  --ocre: #c8924d;     /* decorativo */
-  --cobre: #c17741;    /* decorativo, íconos */
-  --terracota: #a64d38;/* acento principal: 5,6:1 sobre blanco (AA) */
-  --ladrillo: #8b362c; /* hover del acento: 7,9:1 */
+  /* Colores principales (no modificar) */
+  --ciruela: #542f3c;   /* dominante: títulos, fondos institucionales · 11,4:1 sobre blanco */
+  --azul: #0057b8;      /* acción: botones, links, destacados · 6,9:1 sobre blanco */
+  --azul-20: #ccddf1;   /* acento legible sobre ciruela (8,2:1) */
+  --azul-10: #e6eef8;
+  --ciruela-10: #eeeaeb;
 
   --fondo: #ffffff;
-  --superficie: #f6f2ec;
-  --superficie-2: #ece5db;
-  --texto: #1f1714;
-  --meta: #6f645c;
-  --linea: #e9e2d8;
-  --acento: var(--terracota);
-  --acento-hover: var(--ladrillo);
-  --acento-suave: #f8efe6;
-  --acento-claro: var(--oro);
+  --superficie: #f5f2f3;   /* niebla */
+  --superficie-2: #e4dfe1; /* línea */
+  --texto: #1d1519;        /* tinta */
+  --titulos: var(--ciruela);
+  --meta: #5e5459;         /* pizarra */
+  --linea: #e4dfe1;
+  --acento: var(--azul);
+  --acento-hover: var(--ciruela);
+  --acento-suave: var(--azul-10);
+  --acento-claro: var(--azul-20);
   --whatsapp: #25d366;
 
-  --fuente: "Mona Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fuente: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fuente-titulos: "Sora", system-ui, -apple-system, "Segoe UI", sans-serif;
   --max: 1320px;
   --gutter: clamp(16px, 4vw, 48px);
   --r-card: 12px;
@@ -59,10 +62,10 @@ button { font: inherit; color: inherit; }
 .section--tight { padding: clamp(40px, 6vw, 72px) 0; }
 
 /* ---------- Tipografía ---------- */
-h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance; }
+h1, h2, h3 { margin: 0; font-family: var(--fuente-titulos); font-weight: 700; letter-spacing: -0.025em; text-wrap: balance; color: var(--titulos); }
 h1 { font-size: clamp(40px, 6vw, 72px); line-height: 1.04; }
 h2 { font-size: clamp(30px, 3.8vw, 48px); line-height: 1.1; }
-h3 { font-size: 20px; line-height: 1.3; letter-spacing: -0.01em; }
+h3 { font-size: 20px; line-height: 1.3; letter-spacing: -0.01em; font-weight: 600; }
 .hl { color: var(--acento); }
 
 .eyebrow {
@@ -83,19 +86,19 @@ h3 { font-size: 20px; line-height: 1.3; letter-spacing: -0.01em; }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   min-height: 48px; padding: 0 24px; border-radius: var(--r-pill);
-  background: var(--texto); color: #fff; border: 1px solid var(--texto);
+  background: var(--ciruela); color: #fff; border: 1px solid var(--ciruela);
   font: 600 15px/1 var(--fuente); text-decoration: none; cursor: pointer;
   transition: background var(--t) var(--ease), color var(--t) var(--ease), border-color var(--t) var(--ease), transform var(--t) var(--ease);
 }
-.btn:hover { background: #3a2e28; border-color: #3a2e28; }
+.btn:hover { background: var(--texto); border-color: var(--texto); }
 .btn:active { transform: scale(.98); }
 .btn--acento { background: var(--acento); border-color: var(--acento); }
 .btn--acento:hover { background: var(--acento-hover); border-color: var(--acento-hover); }
-.btn--ghost { background: transparent; color: var(--texto); border-color: var(--linea); }
-.btn--ghost:hover { background: var(--superficie); border-color: var(--superficie); }
+.btn--ghost { background: transparent; color: var(--ciruela); border-color: var(--ciruela); }
+.btn--ghost:hover { background: var(--ciruela); color: #fff; border-color: var(--ciruela); }
 .btn--sm { min-height: 40px; padding: 0 18px; font-size: 14px; }
-.btn--blanco { background: #fff; color: var(--texto); border-color: #fff; }
-.btn--blanco:hover { background: var(--superficie); border-color: var(--superficie); }
+.btn--blanco { background: #fff; color: var(--ciruela); border-color: #fff; }
+.btn--blanco:hover { background: var(--azul-10); border-color: var(--azul-10); }
 .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .note { font-size: 13px; color: var(--meta); margin-top: 18px; }
 .note span + span::before { content: "·"; margin: 0 10px; }
@@ -110,7 +113,7 @@ h3 { font-size: 20px; line-height: 1.3; letter-spacing: -0.01em; }
   -webkit-backdrop-filter: saturate(180%) blur(16px); backdrop-filter: saturate(180%) blur(16px);
 }
 .header__inner { display: flex; align-items: center; justify-content: space-between; height: 72px; gap: 24px; }
-.brand { display: inline-flex; color: var(--texto); }
+.brand { display: inline-flex; color: var(--ciruela); }
 .brand svg { height: 18px; width: auto; }
 .nav { display: flex; align-items: center; gap: 4px; }
 .nav a:not(.btn) {
@@ -167,11 +170,11 @@ h3 { font-size: 20px; line-height: 1.3; letter-spacing: -0.01em; }
   position: absolute; z-index: 2; display: flex; align-items: center; gap: 12px;
   background: #fff; border-radius: 14px; padding: 12px 16px 12px 12px; max-width: 290px;
   font-size: 14px; font-weight: 600; line-height: 1.35; letter-spacing: -0.01em;
-  box-shadow: 0 18px 40px -16px rgb(31 23 20 / .35);
+  box-shadow: 0 18px 40px -16px rgb(29 21 25 / .35);
   animation: flotar 6s ease-in-out infinite;
 }
 .flotante small { display: block; font-size: 12px; font-weight: 500; color: var(--meta); margin-bottom: 2px; }
-.flotante__icono { width: 36px; height: 36px; flex: none; border-radius: 10px; display: grid; place-items: center; background: var(--cobre); color: #fff; }
+.flotante__icono { width: 36px; height: 36px; flex: none; border-radius: 10px; display: grid; place-items: center; background: var(--azul); color: #fff; }
 .flotante__icono .icon { width: 18px; height: 18px; }
 .flotante__icono--wa { background: var(--whatsapp); }
 .flotante__icono--ok { background: var(--texto); }
@@ -302,7 +305,7 @@ a.card:hover .card__foto img { transform: scale(1.02); }
 
 /* ---------- Visor de piezas ---------- */
 .visor { width: min(1100px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 0; border: 0; border-radius: 16px; background: #fff; color: var(--texto); }
-.visor::backdrop { background: rgb(31 23 20 / .72); }
+.visor::backdrop { background: rgb(29 21 25 / .72); }
 .visor[open] { animation: visor-in 250ms var(--ease); }
 @keyframes visor-in { from { opacity: 0; transform: translateY(12px); } }
 .visor__head { display: flex; align-items: center; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--linea); }
@@ -326,7 +329,7 @@ a.card:hover .card__foto img { transform: scale(1.02); }
 .card p { margin: 0; color: var(--meta); }
 .card__num { font-size: 13px; font-weight: 600; color: var(--meta); }
 a.card { text-decoration: none; transition: box-shadow var(--t) var(--ease), border-color var(--t) var(--ease); }
-a.card:hover { box-shadow: 0 10px 30px -12px rgb(31 23 20 / .18); border-color: transparent; }
+a.card:hover { box-shadow: 0 10px 30px -12px rgb(29 21 25 / .18); border-color: transparent; }
 .card__more { margin-top: auto; padding-top: 8px; font-size: 14px; font-weight: 600; color: var(--acento); display: inline-flex; align-items: center; gap: 6px; }
 .card__more::after { content: "→"; transition: transform var(--t) var(--ease); }
 a.card:hover .card__more::after, a:hover > .card__more::after { transform: translateX(3px); }
@@ -380,11 +383,11 @@ a.card:hover .card__more::after, a:hover > .card__more::after { transform: trans
 
 /* ---------- Banda CTA ---------- */
 .cta-band { padding: clamp(48px, 6vw, 80px) 0; background: transparent !important; }
-.cta-band__inner { background: var(--texto); color: #fff; border-radius: 20px; padding: clamp(36px, 6vw, 72px); display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: end; }
+.cta-band__inner { background: var(--ciruela) repeating-linear-gradient(50.6deg, transparent 0 26px, rgb(255 255 255 / .05) 26px 28px); color: #fff; border-radius: 20px; padding: clamp(36px, 6vw, 72px); display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: end; }
 .cta-band h2 { color: #fff; }
 .cta-band .lead, .cta-band p { color: rgb(255 255 255 / .72); margin: 16px 0 0; }
 .cta-band .eyebrow { color: var(--acento-claro); }
-.cta-band .btn { background: #fff; color: var(--texto); border-color: #fff; }
+.cta-band .btn { background: #fff; color: var(--ciruela); border-color: #fff; }
 .cta-band .btn:hover { background: var(--superficie); }
 @media (max-width: 760px) { .cta-band__inner { grid-template-columns: 1fr; align-items: start; } }
 
@@ -397,7 +400,7 @@ a.card:hover .card__more::after, a:hover > .card__more::after { transform: trans
   background: var(--superficie); border: 1px solid transparent; border-radius: 10px; padding: 13px 16px;
   transition: border-color var(--t), background var(--t), box-shadow var(--t);
 }
-.field input::placeholder, .field textarea::placeholder { color: #968a80; }
+.field input::placeholder, .field textarea::placeholder { color: #8a7f85; }
 .field input:hover, .field select:hover, .field textarea:hover { background: var(--superficie-2); }
 .field input:focus, .field select:focus, .field textarea:focus { outline: none; background: #fff; border-color: var(--acento); box-shadow: 0 0 0 4px var(--acento-suave); }
 .field textarea { min-height: 110px; resize: vertical; }
@@ -409,7 +412,7 @@ a.card:hover .card__more::after, a:hover > .card__more::after { transform: trans
 @media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
 
 /* ---------- Auditoría de ejemplo ---------- */
-.audit-card { background: #fff; border-radius: 16px; padding: 24px; border: 1px solid var(--linea); box-shadow: 0 30px 60px -30px rgb(31 23 20 / .25); width: 100%; max-width: 440px; }
+.audit-card { background: #fff; border-radius: 16px; padding: 24px; border: 1px solid var(--linea); box-shadow: 0 30px 60px -30px rgb(29 21 25 / .25); width: 100%; max-width: 440px; }
 .audit-card__top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; }
 .audit-card__tag { font-size: 12px; font-weight: 600; color: var(--meta); }
 .audit-card__url { font-size: 13px; font-weight: 600; background: var(--superficie); border-radius: var(--r-pill); padding: 5px 12px; }
@@ -451,12 +454,12 @@ a.card:hover .card__more::after, a:hover > .card__more::after { transform: trans
 @media (max-width: 860px) { .footer__grid { grid-template-columns: 1fr 1fr; } .footer__grid > :first-child { grid-column: 1 / -1; } }
 
 /* ---------- WhatsApp flotante ---------- */
-.wa-float { position: fixed; right: 18px; bottom: 18px; z-index: 60; width: 56px; height: 56px; border-radius: 50%; background: var(--whatsapp); color: #fff; display: grid; place-items: center; box-shadow: 0 10px 24px -8px rgb(31 23 20 / .4); transition: transform var(--t) var(--ease); }
+.wa-float { position: fixed; right: 18px; bottom: 18px; z-index: 60; width: 56px; height: 56px; border-radius: 50%; background: var(--whatsapp); color: #fff; display: grid; place-items: center; box-shadow: 0 10px 24px -8px rgb(29 21 25 / .4); transition: transform var(--t) var(--ease); }
 .wa-float:hover { transform: scale(1.06); }
 .wa-float svg { width: 28px; height: 28px; }
 
 /* ---------- Selector de colores de prueba (?colores) ---------- */
-.colores { position: fixed; left: 16px; bottom: 16px; z-index: 80; background: #fff; border-radius: 14px; padding: 14px; box-shadow: 0 18px 40px -12px rgb(31 23 20 / .35); font-size: 13px; width: 236px; }
+.colores { position: fixed; left: 16px; bottom: 16px; z-index: 80; background: #fff; border-radius: 14px; padding: 14px; box-shadow: 0 18px 40px -12px rgb(29 21 25 / .35); font-size: 13px; width: 236px; }
 .colores p { margin: 0 0 10px; display: flex; justify-content: space-between; }
 .colores p span { color: var(--meta); font-family: ui-monospace, monospace; }
 .colores__lista { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
