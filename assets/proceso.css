@@ -312,9 +312,19 @@
   }
   .proceso__pasos::-webkit-scrollbar { display: none; }
   .proceso__tab { flex: none; width: 150px; scroll-snap-align: start; }
-  .paso { grid-template-columns: 1fr; gap: 22px; padding: 18px 18px 26px; border-radius: 24px; }
-  .paso__visual { order: -1; }
+  /* tablet: sigue en dos columnas, más compacto */
+  .paso { gap: 24px; padding: 24px; border-radius: 24px; }
   .paso__num { font-size: 52px; margin-bottom: 4px; }
+  .paso h3 { font-size: 26px; }
+  .paso p { font-size: 15px; }
+  .paso__lista { margin-bottom: 20px; }
+  .paso__lista li { font-size: 14px; }
+  .proceso__pista { gap: 16px; }
+}
+/* celular: una columna, el dibujo arriba y más bajo para que el paso entre en pantalla */
+@media (max-width: 640px) {
+  .paso { grid-template-columns: 1fr; gap: 20px; padding: 16px 16px 24px; }
+  .paso__visual { order: -1; aspect-ratio: 16 / 11; }
   .paso p { font-size: 16px; }
   .proceso__pista { gap: 12px; }
 }

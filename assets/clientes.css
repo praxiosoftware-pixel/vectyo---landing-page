@@ -50,7 +50,8 @@
 
 .mapa__vacio {
   top: calc(var(--isla) + 92px); left: 50%; translate: -50% 0; margin: 0;
-  padding: 10px 18px; border-radius: var(--r-pill); font-size: 13px; color: var(--suave); white-space: nowrap;
+  width: max-content; max-width: calc(100% - 32px); text-align: center;
+  padding: 10px 18px; border-radius: 18px; font-size: 13px; color: var(--suave);
 }
 .mapa__vacio[hidden] { display: none; }
 
