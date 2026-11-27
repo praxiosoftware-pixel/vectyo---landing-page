@@ -16,8 +16,9 @@ const ETAPAS = [
 ];
 const nombreEtapa = (e) => (ETAPAS.find((x) => x[0] === e) || [e, e])[1];
 const SERVICIOS = ['Páginas web', 'Marketing y redes', 'Automatización e IA', 'Branding y diseño'];
-const CAT_GASTO = ['Software y suscripciones', 'Publicidad', 'Hosting y dominios', 'Impuestos y monotributo', 'Equipos', 'Honorarios y sueldos', 'Transporte', 'Capacitación', 'Varios'];
-const CAT_INGRESO = ['Seña', 'Pago de proyecto', 'Abono mensual', 'Otro ingreso'];
+const CAT_GASTO = ['Publicidad', 'Herramienta IA', 'Dominios', 'Hosting', 'Base de datos', 'Otro'];
+const FRECUENCIAS = [['unico', 'Único'], ['mensual', 'Mensual'], ['anual', 'Anual']];
+const CAT_INGRESO = ['Seña', 'Pago de proyecto', 'Abono mensual', 'Otro'];
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const MESES_LARGOS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const TIPO_ACUERDO = { proyecto: 'Proyecto (pago único)', mensual: 'Abono mensual', otro: 'Otro' };
@@ -56,6 +57,32 @@ function s(tag, attrs, ...hijos) {
   for (const c of hijos.flat()) if (c != null) el.append(c instanceof Node ? c : document.createTextNode(String(c)));
   return el;
 }
+// Íconos de trazo (estilo iPhone), dibujados acá para no cargar nada de afuera
+const ICONOS = {
+  clientes: 'M9 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z|M2.5 19.5c.8-3.4 3.4-5.2 6.5-5.2s5.7 1.8 6.5 5.2|M16 4.7a3.3 3.3 0 0 1 0 6.4|M18.2 14.6c1.8.7 2.9 2.3 3.3 4.9',
+  finanzas: 'M3 21h18|M6 17v-5|M11 17V7|M16 17v-8|M20.5 17V4',
+  registro: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z|M12 7v5l3.2 2',
+  mas: 'M12 5v14|M5 12h14',
+  ingreso: 'M17 7 7 17|M15 17H7V9',
+  gasto: 'M7 17 17 7|M9 7h8v8',
+  editar: 'M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3z',
+  borrar: 'M4 7h16|M10 11v6|M14 11v6|M6 7l1 13h10l1-13|M9 7V4h6v3',
+  salir: 'M15 4h4v16h-4|M10 8l-4 4 4 4|M6 12h10',
+  izq: 'M15 5l-7 7 7 7',
+  der: 'M9 5l7 7-7 7',
+  whatsapp: 'M4 20l1.4-4A8 8 0 1 1 8.2 18.7z|M9 9.5c.3 2 1.6 3.6 3.6 4.5l1.2-1.1 2 .9',
+  subir: 'M12 15V4|M7 9l5-5 5 5|M5 20h14',
+  pago: 'M3 7h18v11H3z|M3 11h18|M7 15h3',
+  web: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z|M3 12h18|M12 3c2.5 2.6 3.7 5.6 3.7 9s-1.2 6.4-3.7 9c-2.5-2.6-3.7-5.6-3.7-9S9.5 5.6 12 3z',
+  mail: 'M3 6h18v12H3z|M3 7l9 6 9-6',
+  camara: 'M4 8h3l2-3h6l2 3h3v11H4z|M12 16.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z',
+  volver: 'M19 12H5|M11 6l-6 6 6 6',
+};
+function icono(nombre) {
+  return s('svg', { class: 'ico', viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' },
+    (ICONOS[nombre] || '').split('|').map((d) => s('path', { d })));
+}
+
 const formatos = {};
 function plata(n, moneda = 'ARS') {
   const k = moneda;
@@ -104,6 +131,16 @@ function sel(name, opciones, valor, attrs = {}) {
     if (String(v) === String(valor ?? '')) op.selected = true;
     return op;
   }));
+}
+
+// Selector tipo iPhone (opciones excluyentes) y chips
+function segmento(name, opciones, valor, clase = '') {
+  return h('div', { class: 'segmento ' + clase, role: 'radiogroup' }, opciones.map(([v, t]) =>
+    h('label', {}, h('input', { type: 'radio', name, value: v, checked: String(v) === String(valor ?? '') }), h('span', { text: t }))));
+}
+function chipsRadio(name, opciones, valor) {
+  return h('div', { class: 'chips', role: 'radiogroup' }, opciones.map((v) =>
+    h('label', {}, h('input', { type: 'radio', name, value: v, checked: v === valor }), h('span', { text: v }))));
 }
 
 // Diálogo genérico: arma el formulario, llama a alGuardar(FormData) y se cierra si sale bien.
@@ -284,34 +321,45 @@ function vigilarInactividad() {
 // Marco y rutas
 // ------------------------------------------------------------------
 let $main;
+function secciones() {
+  const l = [['#/clientes', 'Clientes', 'clientes'], ['#/finanzas', 'Finanzas', 'finanzas']];
+  if (esAdmin()) l.push(['#/registro', 'Registro', 'registro']);
+  return l;
+}
 function armarMarco() {
-  const links = [['#/clientes', 'Clientes'], ['#/plata', esAdmin() ? 'Ingresos y gastos' : 'Cargar plata']];
-  if (esAdmin()) links.push(['#/analytics', 'Analytics'], ['#/registro', 'Registro y copias']);
-  const nav = h('nav', { class: 'nav', 'aria-label': 'Secciones' }, links.map(([href, t]) => h('a', { href, text: t })));
+  const links = secciones();
+  const nav = h('nav', { class: 'nav', 'aria-label': 'Secciones' }, links.map(([href, t, ic]) => h('a', { href }, icono(ic), t)));
+  const tabbar = h('nav', { class: 'tabbar', 'aria-label': 'Secciones' }, links.map(([href, t, ic]) => h('a', { href }, icono(ic), t)));
   $main = h('main', { id: 'contenido' });
   $app.replaceChildren(
     h('header', { class: 'barra' },
-      h('a', { class: 'marca', href: '#/clientes' }, h('img', { src: 'isotipo.svg', alt: '' }), 'VECTYO'),
+      h('a', { class: 'marca', href: '#/clientes' }, h('img', { src: 'isotipo-ciruela.svg', alt: '' }), 'VECTYO'),
       nav,
-      h('div', { class: 'usuario' }, h('span', { class: 'quien suave chico', text: yo.nombre }), h('button', { class: 'btn sec mini', text: 'Salir', onclick: () => salir() }))),
+      h('div', { class: 'usuario' }, h('span', { class: 'quien suave chico', text: yo.nombre }),
+        h('button', { class: 'btn sec mini', onclick: () => salir() }, icono('salir'), 'Salir'))),
     MODO_DEMO ? h('div', { class: 'demo', text: 'Modo demo: datos inventados, solo en esta compu. Nada se guarda.' }) : null,
-    $main);
+    $main,
+    tabbar,
+    h('button', { class: 'fab', 'aria-label': 'Cargar algo nuevo', title: 'Cargar algo nuevo', onclick: hojaNuevo }, icono('mas')));
 }
 function marcarNav() {
-  const actual = '#/' + (location.hash.split('/')[1] || 'clientes');
-  document.querySelectorAll('.nav a').forEach((a) => a.toggleAttribute('aria-current', false));
-  const a = [...document.querySelectorAll('.nav a')].find((x) => x.getAttribute('href') === (actual === '#/cliente' ? '#/clientes' : actual));
-  if (a) a.setAttribute('aria-current', 'page');
+  let actual = location.hash.split('?')[0].split('/')[1] || 'clientes';
+  if (actual === 'cliente') actual = 'clientes';
+  if (actual === 'plata' || actual === 'analytics') actual = 'finanzas';
+  document.querySelectorAll('.nav a, .tabbar a').forEach((a) => {
+    if (a.getAttribute('href') === '#/' + actual) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
+  });
 }
 async function ruta() {
   if (!yo || !$main) return;
-  const [, seccion, id] = location.hash.split('/');
+  const [, seccionCruda, id] = location.hash.split('?')[0].split('/');
+  const seccion = seccionCruda || 'clientes';
   marcarNav();
   $main.replaceChildren(h('p', { class: 'cargando', text: 'Cargando…' }));
   try {
     if (seccion === 'cliente' && id) await vistaFicha(decodeURIComponent(id));
-    else if (seccion === 'plata') await vistaPlata();
-    else if (seccion === 'analytics' && esAdmin()) await vistaAnalytics();
+    else if (['finanzas', 'plata', 'analytics'].includes(seccion)) await vistaFinanzas();
     else if (seccion === 'registro' && esAdmin()) await vistaRegistro();
     else await vistaClientes();
   } catch (e) {
@@ -321,6 +369,22 @@ async function ruta() {
   window.scrollTo(0, 0);
 }
 addEventListener('hashchange', ruta);
+
+// Botón "+": hoja con las tres cargas más comunes
+function hojaNuevo() {
+  const opcion = (ic, color, titulo, sub, accion) => h('button', { type: 'button', onclick: async () => { dlg.close(); if (await accion()) ruta(); } },
+    h('span', { class: 'icono-caja' + ' ' + color }, icono(ic)), h('span', {}, titulo, h('small', { text: sub })));
+  const dlg = h('dialog', { 'aria-label': 'Cargar algo nuevo' }, h('div', { class: 'contenido' },
+    h('h2', { text: '¿Qué querés cargar?' }),
+    h('div', { class: 'hoja' },
+      opcion('ingreso', 'fondo-azul', 'Ingreso', 'Plata que entró: un cobro, una seña, un abono', () => formMovimiento({ tipo: 'ingreso' })),
+      opcion('gasto', 'fondo-gasto', 'Gasto', 'Plata que salió: publicidad, herramientas, hosting…', () => formMovimiento({ tipo: 'gasto' })),
+      opcion('clientes', 'fondo-ciruela', 'Cliente nuevo', 'Su ficha con datos y forma de trabajar', async () => { const c = await formCliente(); if (c) { location.hash = '#/cliente/' + c.id; return false; } return false; })),
+    h('div', { class: 'acciones' }, h('button', { class: 'btn sec ancho', type: 'button', text: 'Cancelar', onclick: () => dlg.close() }))));
+  dlg.addEventListener('close', () => dlg.remove());
+  document.body.append(dlg);
+  dlg.showModal();
+}
 
 // ------------------------------------------------------------------
 // Clientes
@@ -343,7 +407,7 @@ async function vistaClientes() {
   pintar();
   $main.replaceChildren(
     h('div', { class: 'encabezado' }, h('h1', { text: 'Clientes' }), h('span', { class: 'suave chico', text: clientes.length + ' en total' }),
-      h('button', { class: 'btn', text: '+ Nuevo cliente', onclick: async () => { const c = await formCliente(); if (c) location.hash = '#/cliente/' + c.id; } })),
+      h('button', { class: 'btn', onclick: async () => { const c = await formCliente(); if (c) location.hash = '#/cliente/' + c.id; } }, icono('mas'), 'Nuevo cliente')),
     h('div', { class: 'filtros' }, buscar, etapa),
     grilla);
 }
@@ -398,34 +462,45 @@ async function vistaFicha(id) {
   ]);
   if (!c) throw new Error('No se encontró ese cliente.');
   const recargar = () => ruta();
+  const nuevoPago = async () => { if (await formMovimiento({ tipo: 'ingreso', cliente_id: c.id, categoria: 'Pago de proyecto' }, { cliente: c, acuerdos })) recargar(); };
+  const subirPdf = async () => {
+    const fs = await elegirArchivo('application/pdf', true);
+    for (const f of fs) {
+      if (f.size > 25 * 1024 * 1024) { aviso(f.name + ' pesa más de 25 MB.', true); continue; }
+      await intentar(() => datos.subirArchivo(c.id, f), 'Subido: ' + f.name).catch(() => {});
+    }
+    if (fs.length) recargar();
+  };
 
   // Cabecera
   const fotoBox = h('div', { class: 'foto-cambiar' }, avatar(c, true),
-    h('button', { class: 'btn sec', text: 'Foto', 'aria-label': 'Cambiar foto', onclick: async () => {
+    h('button', { class: 'btn sec btn-icono', 'aria-label': 'Cambiar foto', title: 'Cambiar foto', onclick: async () => {
       const [f] = await elegirArchivo('image/jpeg,image/png,image/webp');
       if (!f) return;
       if (f.size > 5 * 1024 * 1024) return aviso('La foto pesa más de 5 MB. Probá con una más chica.', true);
       await intentar(() => datos.subirFoto(c, f), 'Foto actualizada.');
       recargar();
-    } }));
+    } }, icono('camara')));
   const links = [
-    urlWhatsapp(c.whatsapp) && h('a', { class: 'btn mini', href: urlWhatsapp(c.whatsapp), target: '_blank', rel: 'noopener noreferrer', text: 'WhatsApp' }),
+    urlWhatsapp(c.whatsapp) && h('a', { class: 'btn verde', href: urlWhatsapp(c.whatsapp), target: '_blank', rel: 'noopener noreferrer' }, icono('whatsapp'), 'WhatsApp'),
+    h('button', { class: 'btn', onclick: nuevoPago }, icono('pago'), 'Cargar pago'),
+    h('button', { class: 'btn sec', onclick: subirPdf }, icono('subir'), 'Subir PDF'),
+    h('button', { class: 'btn sec', onclick: async () => { if (await formCliente(c)) recargar(); } }, icono('editar'), 'Editar'),
     urlInstagram(c.instagram) && h('a', { class: 'btn sec mini', href: urlInstagram(c.instagram), target: '_blank', rel: 'noopener noreferrer', text: 'Instagram' }),
-    urlWeb(c.web) && h('a', { class: 'btn sec mini', href: urlWeb(c.web), target: '_blank', rel: 'noopener noreferrer', text: 'Web' }),
-    c.email && h('a', { class: 'btn sec mini', href: 'mailto:' + c.email, text: 'Mail' }),
+    urlWeb(c.web) && h('a', { class: 'btn sec mini', href: urlWeb(c.web), target: '_blank', rel: 'noopener noreferrer' }, icono('web'), 'Web'),
+    c.email && h('a', { class: 'btn sec mini', href: 'mailto:' + c.email }, icono('mail'), 'Mail'),
   ];
-  const cab = h('div', { class: 'ficha-cab' }, fotoBox,
+  const cab = h('div', { class: 'ficha-cab vidrio' }, fotoBox,
     h('div', { class: 'info' },
       h('h1', { text: c.nombre }),
       h('div', {}, h('span', { class: 'chip etapa-' + c.etapa, text: nombreEtapa(c.etapa) }), ' ',
         (c.servicios || []).map((sv) => [h('span', { class: 'chip', text: sv }), ' '])),
       h('div', { class: 'botones' }, links,
-        h('button', { class: 'btn sec mini', text: 'Editar', onclick: async () => { if (await formCliente(c)) recargar(); } }),
-        esAdmin() && h('button', { class: 'btn peligro mini', text: 'Borrar', onclick: async () => {
-          if (!await confirmar('¿Borrar ' + c.nombre + '?', 'Se borra la ficha con su historial, tratos y PDF. Los pagos quedan en Ingresos y gastos, sin cliente. No se puede deshacer.')) return;
+        esAdmin() && h('button', { class: 'btn peligro mini', onclick: async () => {
+          if (!await confirmar('¿Borrar ' + c.nombre + '?', 'Se borra la ficha con su historial, tratos y PDF. Los pagos quedan en Finanzas, sin cliente. No se puede deshacer.')) return;
           await intentar(() => datos.borrarCliente(c), 'Cliente borrado.');
           location.hash = '#/clientes';
-        } }))));
+        } }, icono('borrar'), 'Borrar'))));
 
   // Personalidad
   const bloque = (t, v) => h('div', { class: 'bloque' }, h('h3', { text: t }), h('p', { class: 'texto-largo' + (v ? '' : ' suave'), text: v || 'Sin cargar.' }));
@@ -481,22 +556,16 @@ async function vistaFicha(id) {
     resumen,
     acuerdos.length ? h('ul', { class: 'lista' }, filasAcuerdo) : h('p', { class: 'suave', text: 'Todavía no hay tratos. Cargá lo que acordaron: monto, si es pago único o abono mensual y las condiciones (seña, cuotas).' }),
     h('h3', { class: 'bloque', text: 'Pagos recibidos' }),
-    h('div', { class: 'acciones' }, h('button', { class: 'btn mini', text: '+ Pago recibido', onclick: async () => { if (await formMovimiento({ tipo: 'ingreso', cliente_id: c.id }, { cliente: c, acuerdos })) recargar(); } })),
+    h('div', { class: 'acciones' }, h('button', { class: 'btn mini', onclick: nuevoPago }, icono('mas'), 'Cargar pago')),
     ingresos.length ? h('ul', { class: 'lista' }, ingresos.map((m) => h('li', {},
       h('span', { class: 'fecha', text: fechaLinda(m.fecha) }),
-      h('div', { class: 'cuerpo' }, h('p', {}, h('strong', { text: plata(m.monto, m.moneda) }), ' · ' + m.categoria), m.descripcion ? h('p', { class: 'chico suave', text: m.descripcion }) : null)))) :
+      h('div', { class: 'cuerpo' }, h('p', {}, h('strong', { text: plata(m.monto, m.moneda) }), ' · ' + m.categoria), m.descripcion ? h('p', { class: 'chico suave', text: m.descripcion }) : null),
+      h('button', { class: 'btn sec mini btn-icono', 'aria-label': 'Editar pago', onclick: async () => { if (await formMovimiento(m, { cliente: c, acuerdos })) recargar(); } }, icono('editar'))))) :
       h('p', { class: 'suave chico', text: 'Sin pagos cargados.' }));
 
   // Archivos
   const pArchivos = h('section', { class: 'panel' },
-    h('h2', {}, 'Archivos PDF', h('button', { class: 'btn mini', text: 'Subir PDF', onclick: async () => {
-      const fs = await elegirArchivo('application/pdf', true);
-      for (const f of fs) {
-        if (f.size > 25 * 1024 * 1024) { aviso(f.name + ' pesa más de 25 MB.', true); continue; }
-        await intentar(() => datos.subirArchivo(c.id, f), 'Subido: ' + f.name).catch(() => {});
-      }
-      if (fs.length) recargar();
-    } })),
+    h('h2', {}, 'Archivos PDF', h('button', { class: 'btn mini', onclick: subirPdf }, icono('subir'), 'Subir PDF')),
     archivos.length ? h('ul', { class: 'lista' }, archivos.map((a) => h('li', {},
       h('div', { class: 'cuerpo' }, h('p', { text: a.nombre }), h('p', { class: 'chico suave', text: fechaLinda(a.creado_en) + (a.tamano ? ' · ' + (a.tamano / 1048576).toFixed(1) + ' MB' : '') })),
       h('button', { class: 'btn sec mini', text: 'Abrir', onclick: async () => {
@@ -532,7 +601,7 @@ async function vistaFicha(id) {
   const pNotas = c.notas ? h('section', { class: 'panel' }, h('h2', { text: 'Notas' }), h('p', { class: 'texto-largo', text: c.notas })) : null;
 
   $main.replaceChildren(
-    h('p', { class: 'chico' }, h('a', { href: '#/clientes', text: '← Todos los clientes' })),
+    h('a', { class: 'volver', href: '#/clientes' }, icono('volver'), 'Clientes'),
     cab,
     h('div', { class: 'ficha-grilla' }, pPersona, pDatos, pPlata, pArchivos, pHistorial, pNotas));
 }
@@ -558,243 +627,244 @@ function formAcuerdo(c, a = {}) {
 }
 
 // ------------------------------------------------------------------
-// Ingresos y gastos
+// Finanzas: carga de ingresos y gastos (únicos, mensuales o anuales)
 // ------------------------------------------------------------------
-async function formMovimiento(m = {}, { cliente, acuerdos, clientes } = {}) {
-  const tipo = sel('tipo', [['ingreso', 'Ingreso (entró plata)'], ['gasto', 'Gasto (salió plata)']], m.tipo || 'gasto');
-  const categoria = sel('categoria', [], '');
-  const pintarCat = () => {
-    const lista = tipo.value === 'ingreso' ? CAT_INGRESO : CAT_GASTO;
-    const opciones = m.categoria && !lista.includes(m.categoria) ? [...lista, m.categoria] : lista;
-    categoria.replaceChildren(...opciones.map((o) => { const op = h('option', { value: o, text: o }); if (o === m.categoria) op.selected = true; return op; }));
-  };
-  pintarCat();
-  const fijoBox = h('label', { class: 'check entera' }, h('input', { type: 'checkbox', name: 'fijo', checked: m.fijo }), 'Es un gasto fijo que se repite todos los meses');
-  const moneda = sel('moneda', ['ARS', 'USD'], m.moneda || 'ARS');
-  const acuerdoSel = acuerdos?.length ? sel('acuerdo_id', [['', 'Sin trato asociado'], ...acuerdos.filter((a) => a.estado !== 'cancelado').map((a) => [a.id, a.concepto + ' (' + a.moneda + ')'])], m.acuerdo_id || (acuerdos.find((a) => a.estado === 'vigente')?.id ?? '')) : null;
-  if (acuerdoSel) {
-    const sync = () => { const a = acuerdos.find((x) => x.id === acuerdoSel.value); if (a) moneda.value = a.moneda; };
-    acuerdoSel.addEventListener('change', sync);
-    if (!m.id) sync();
-  }
-  let clienteSel = null;
-  if (!cliente) {
-    const cl = clientes || await datos.listarClientes();
+// Un movimiento mensual se carga una vez y cuenta todos los meses desde su fecha
+// hasta la baja (fecha_fin). Uno anual cuenta una vez por año, en el mes de su fecha.
+const mesDe = (iso) => String(iso).slice(0, 7);
+function cuentaEnMes(m, pref) {
+  const ini = mesDe(m.fecha);
+  if (pref < ini) return false;
+  if (m.fecha_fin && pref > mesDe(m.fecha_fin)) return false;
+  const f = m.frecuencia || 'unico';
+  if (f === 'mensual') return true;
+  if (f === 'anual') return pref.slice(5) === ini.slice(5);
+  return pref === ini;
+}
+// Activo = se va a seguir cobrando el mes que viene (sin baja, o con baja en un mes futuro).
+const activoHoy = (m) => !m.fecha_fin || mesDe(m.fecha_fin) > mesDe(hoyISO());
+const nombreFrecuencia = (f) => (FRECUENCIAS.find((x) => x[0] === f) || FRECUENCIAS[0])[1];
+const tituloMov = (m) => m.descripcion || m.categoria;
+function sumarMes(movs, pref, filtro = () => true) { return sumar(movs.filter((m) => filtro(m) && cuentaEnMes(m, pref))); }
+function prefMes(anio, mes) { return `${anio}-${String(mes).padStart(2, '0')}`; }
+function moverMes(pref, delta) { const [a, m] = pref.split('-').map(Number); const d = new Date(a, m - 1 + delta, 1); return prefMes(d.getFullYear(), d.getMonth() + 1); }
+function nombreMes(pref) { const [a, m] = pref.split('-').map(Number); return MESES_LARGOS[m - 1] + ' ' + a; }
+
+async function formMovimiento(m = {}, { cliente, acuerdos } = {}) {
+  const esPagoCliente = !!cliente;
+  const tipoInicial = esPagoCliente ? 'ingreso' : (m.tipo || 'gasto');
+  const contDestino = h('div', { class: 'entera' });
+  const ayudaFecha = h('span');
+  const notaRecurrente = h('p', { class: 'chico suave entera' });
+  const tipoSeg = esPagoCliente ? h('input', { type: 'hidden', name: 'tipo', value: 'ingreso' }) : segmento('tipo', [['ingreso', 'Ingreso'], ['gasto', 'Gasto']], tipoInicial, 'ingreso-gasto');
+  const freqSeg = segmento('frecuencia', FRECUENCIAS, m.frecuencia || 'unico');
+  const leer = (n, form) => form.querySelector(`[name="${n}"]:checked`)?.value || form.querySelector(`[name="${n}"]`)?.value;
+
+  // Opciones extra: cliente, trato y medio de pago
+  let clienteSel = null, acuerdoSel = null;
+  if (esPagoCliente) {
+    if (acuerdos?.length) acuerdoSel = sel('acuerdo_id', [['', 'Sin trato asociado'], ...acuerdos.filter((a) => a.estado !== 'cancelado').map((a) => [a.id, a.concepto + ' (' + a.moneda + ')'])], m.acuerdo_id || (acuerdos.find((a) => a.estado === 'vigente')?.id ?? ''));
+  } else {
+    const cl = await datos.listarClientes();
     clienteSel = sel('cliente_id', [['', 'Ninguno'], ...cl.map((x) => [x.id, x.nombre])], m.cliente_id || '');
   }
-  const actualizar = () => { pintarCat(); fijoBox.hidden = tipo.value !== 'gasto'; };
-  tipo.addEventListener('change', actualizar);
-  actualizar();
-  return dialogo({
-    titulo: m.id ? 'Editar movimiento' : cliente ? 'Pago recibido de ' + cliente.nombre : (m.tipo === 'ingreso' ? 'Nuevo ingreso' : 'Nuevo gasto'),
-    cuerpo: h('div', { class: 'grilla-form' },
-      cliente ? h('input', { type: 'hidden', name: 'tipo', value: 'ingreso' }) : campo('Tipo', tipo),
-      campo('Monto *', inp('monto', m.monto, { type: 'number', min: '0.01', step: '0.01', inputmode: 'decimal', required: true })),
-      campo('Moneda', moneda),
-      campo('Fecha', inp('fecha', m.fecha || hoyISO(), { type: 'date', required: true })),
-      campo('Categoría', categoria),
-      acuerdoSel ? campo('Corresponde al trato', acuerdoSel) : null,
+  const extras = h('details', { class: 'entera' }, h('summary', { class: 'chico', text: 'Más opciones (cliente, medio de pago)' }),
+    h('div', { class: 'grilla-form bloque' },
       clienteSel ? campo('Cliente (si corresponde)', clienteSel) : null,
-      campo('Medio de pago', inp('medio_pago', m.medio_pago, { placeholder: 'Transferencia, efectivo, Mercado Pago…' })),
-      campo('Detalle', inp('descripcion', m.descripcion, { placeholder: 'Ej: Artlist Pro, anuncios de noviembre' }), 'entera'),
-      cliente ? null : fijoBox),
+      acuerdoSel ? campo('Corresponde al trato', acuerdoSel) : null,
+      campo('Medio de pago', inp('medio_pago', m.medio_pago, { placeholder: 'Transferencia, efectivo, Mercado Pago…' }))));
+  if (esPagoCliente) extras.open = true;
+
+  const cuerpo = h('div', { class: 'grilla-form' },
+    esPagoCliente ? tipoSeg : h('div', { class: 'entera' }, tipoSeg),
+    campo('Título *', inp('descripcion', m.descripcion, { required: true, maxlength: 120, placeholder: 'Ej: Claude Pro, Dominio vectyo.com, Seña web' }), 'entera'),
+    campo('Monto *', inp('monto', m.monto, { class: 'grande', type: 'number', min: '0.01', step: '0.01', inputmode: 'decimal', required: true, placeholder: '0' })),
+    h('div', { class: 'campo' }, h('span', { class: 'suave chico', text: 'Moneda' }), segmento('moneda', [['ARS', 'Pesos'], ['USD', 'Dólares']], m.moneda || 'ARS')),
+    esPagoCliente ? h('input', { type: 'hidden', name: 'frecuencia', value: 'unico' }) : h('div', { class: 'entera campo' }, h('span', { class: 'suave chico', text: '¿Cada cuánto?' }), freqSeg),
+    notaRecurrente,
+    contDestino,
+    campo(ayudaFecha, inp('fecha', m.fecha || hoyISO(), { type: 'date', required: true })),
+    extras);
+
+  const actualizar = () => {
+    const form = cuerpo;
+    const tipo = leer('tipo', form) || tipoInicial;
+    const freq = leer('frecuencia', form) || 'unico';
+    const opciones = tipo === 'gasto' ? CAT_GASTO : CAT_INGRESO;
+    const actual = contDestino.querySelector('[name="categoria"]:checked')?.value || m.categoria;
+    const lista = actual && !opciones.includes(actual) && (m.tipo || tipoInicial) === tipo ? [...opciones, actual] : opciones;
+    contDestino.replaceChildren(h('span', { class: 'suave chico campo', text: tipo === 'gasto' ? 'Destino del gasto *' : 'Tipo de ingreso *' }),
+      chipsRadio('categoria', lista, lista.includes(actual) ? actual : ''));
+    ayudaFecha.textContent = freq === 'mensual' ? 'Desde (primer mes)' : freq === 'anual' ? 'Fecha del pago anual' : 'Fecha';
+    notaRecurrente.textContent = freq === 'mensual' ? 'Se cuenta solo todos los meses, hasta que le des de baja. No hace falta volver a cargarlo.'
+      : freq === 'anual' ? 'Se cuenta una vez por año, en el mes de esta fecha, hasta que le des de baja.' : '';
+    notaRecurrente.hidden = freq === 'unico';
+  };
+  cuerpo.addEventListener('change', (ev) => { if (['tipo', 'frecuencia'].includes(ev.target.name)) actualizar(); });
+  if (acuerdoSel) acuerdoSel.addEventListener('change', () => { const a = acuerdos.find((x) => x.id === acuerdoSel.value); if (a) { const r = cuerpo.querySelector(`[name="moneda"][value="${a.moneda}"]`); if (r) r.checked = true; } });
+  actualizar();
+
+  return dialogo({
+    titulo: m.id ? 'Editar movimiento' : esPagoCliente ? 'Pago de ' + cliente.nombre : '¿Qué cargamos?',
+    cuerpo,
     alGuardar: async (fd) => {
       const monto = Number(fd.get('monto'));
-      if (!(monto > 0)) throw new Error('El monto tiene que ser mayor a cero.');
-      const t = cliente ? 'ingreso' : fd.get('tipo');
+      if (!(monto > 0)) throw new Error('Poné un monto mayor a cero.');
+      const categoria = fd.get('categoria');
+      if (!categoria) throw new Error('Elegí ' + (fd.get('tipo') === 'gasto' ? 'el destino del gasto.' : 'el tipo de ingreso.'));
       const fila = {
-        tipo: t, monto, moneda: fd.get('moneda'), fecha: fd.get('fecha') || hoyISO(), categoria: fd.get('categoria'),
-        medio_pago: String(fd.get('medio_pago') || '').trim() || null, descripcion: String(fd.get('descripcion') || '').trim() || null,
-        cliente_id: cliente ? cliente.id : (fd.get('cliente_id') || null),
-        acuerdo_id: fd.get('acuerdo_id') || (cliente ? null : m.acuerdo_id || null),
-        fijo: t === 'gasto' && fd.get('fijo') === 'on',
+        tipo: fd.get('tipo'), descripcion: String(fd.get('descripcion') || '').trim() || null, monto,
+        moneda: fd.get('moneda') || 'ARS', frecuencia: fd.get('frecuencia') || 'unico', categoria,
+        fecha: fd.get('fecha') || hoyISO(), medio_pago: String(fd.get('medio_pago') || '').trim() || null,
+        cliente_id: esPagoCliente ? cliente.id : (fd.get('cliente_id') || null),
+        acuerdo_id: esPagoCliente ? (fd.get('acuerdo_id') || null) : (fd.get('cliente_id') && fd.get('cliente_id') === m.cliente_id ? m.acuerdo_id || null : null),
       };
-      if (!cliente && fila.cliente_id !== m.cliente_id) fila.acuerdo_id = null;
       if (m.id) fila.id = m.id;
       await datos.guardarMovimiento(fila);
-      aviso(t === 'ingreso' ? 'Ingreso guardado.' : 'Gasto guardado.');
+      aviso(fila.tipo === 'ingreso' ? 'Ingreso guardado' : 'Gasto guardado');
     },
   });
 }
 
-async function vistaPlata() {
-  const params = new URLSearchParams(location.hash.split('?')[1] || '');
-  const mesActual = hoyISO().slice(0, 7);
-  const mes = /^\d{4}-\d{2}$/.test(params.get('mes') || '') ? params.get('mes') : mesActual;
-  const [a, m] = mes.split('-').map(Number);
-  const desde = `${mes}-01`;
-  const hasta = `${mes}-${String(new Date(a, m, 0).getDate()).padStart(2, '0')}`;
-  const [movs, clientes] = await Promise.all([datos.listarMovimientos({ desde, hasta }), datos.listarClientes()]);
-  const nombres = Object.fromEntries(clientes.map((c) => [c.id, c.nombre]));
-
-  const selMes = inp('mes', mes, { type: 'month', 'aria-label': 'Mes' });
-  selMes.addEventListener('change', () => { if (selMes.value) location.hash = '#/plata?mes=' + selMes.value; });
-  const selTipo = sel('tipo', [['', 'Ingresos y gastos'], ['ingreso', 'Solo ingresos'], ['gasto', 'Solo gastos']], '', { 'aria-label': 'Tipo' });
-  const cuerpoTabla = h('tbody');
-  const pie = h('tfoot');
-  const puedeEditar = (x) => esAdmin() || x.creado_por === yo.id;
-
-  function pintar() {
-    const lista = movs.filter((x) => !selTipo.value || x.tipo === selTipo.value);
-    cuerpoTabla.replaceChildren(...lista.map((x) => h('tr', {},
-      h('td', { class: 'mono chico', text: fechaLinda(x.fecha) }),
-      h('td', {}, h('span', { class: 'chip', text: x.tipo === 'ingreso' ? 'Ingreso' : x.fijo ? 'Gasto fijo' : 'Gasto' })),
-      h('td', { text: x.categoria }),
-      h('td', {}, x.descripcion || '', x.cliente_id ? h('span', { class: 'suave chico', text: (x.descripcion ? ' · ' : '') + (nombres[x.cliente_id] || 'cliente') }) : ''),
-      h('td', { class: 'num ' + (x.tipo === 'ingreso' ? 'pos' : 'neg'), text: (x.tipo === 'ingreso' ? '+ ' : '− ') + plata(x.monto, x.moneda) }),
-      h('td', { class: 'num' },
-        puedeEditar(x) ? h('button', { class: 'btn sec mini', text: 'Editar', onclick: async () => { if (await formMovimiento(x, { clientes })) ruta(); } }) : null, ' ',
-        esAdmin() ? h('button', { class: 'btn peligro mini', text: '×', 'aria-label': 'Borrar', onclick: async () => {
-          if (!await confirmar('¿Borrar este movimiento?', `${x.categoria} · ${plata(x.monto, x.moneda)} del ${fechaLinda(x.fecha)}`)) return;
-          await intentar(() => datos.borrarMovimiento(x.id), 'Borrado.'); ruta();
-        } }) : null))));
-    if (!lista.length) cuerpoTabla.replaceChildren(h('tr', {}, h('td', { colspan: 6, class: 'vacio', text: 'No hay movimientos en ' + MESES_LARGOS[m - 1] + ' ' + a + '.' })));
-    const filas = [];
-    if (esAdmin()) {
-      for (const mon of ['ARS', 'USD']) {
-        const deMon = movs.filter((x) => x.moneda === mon);
-        if (!deMon.length) continue;
-        const ing = sumar(deMon.filter((x) => x.tipo === 'ingreso')), gas = sumar(deMon.filter((x) => x.tipo === 'gasto'));
-        filas.push(h('tr', { class: 'total' }, h('td', { colspan: 4, text: `Resultado del mes en ${mon} (ingresos ${plata(ing, mon)} − gastos ${plata(gas, mon)})` }),
-          h('td', { class: 'num ' + (ing - gas >= 0 ? 'pos' : 'neg'), text: plata(ing - gas, mon) }), h('td')));
-      }
-    }
-    pie.replaceChildren(...filas);
-  }
-  selTipo.addEventListener('change', pintar);
-  pintar();
-
-  async function cargarFijos() {
-    const ant = new Date(a, m - 2, 1);
-    const am = `${ant.getFullYear()}-${String(ant.getMonth() + 1).padStart(2, '0')}`;
-    const ultimo = new Date(ant.getFullYear(), ant.getMonth() + 1, 0).getDate();
-    const previos = (await datos.listarMovimientos({ desde: am + '-01', hasta: `${am}-${ultimo}` })).filter((x) => x.tipo === 'gasto' && x.fijo);
-    const clave = (x) => [x.categoria, x.descripcion || '', x.moneda].join('|');
-    const ya = new Set(movs.filter((x) => x.fijo).map(clave));
-    const faltan = previos.filter((x) => !ya.has(clave(x)));
-    if (!faltan.length) return aviso(previos.length ? 'Los gastos fijos de este mes ya están cargados.' : 'El mes anterior no tiene gastos marcados como fijos.');
-    const diasMes = new Date(a, m, 0).getDate();
-    const ok = await dialogo({
-      titulo: 'Cargar gastos fijos de ' + MESES_LARGOS[m - 1],
-      cuerpo: h('div', {}, h('p', { class: 'suave', text: 'Se copian estos gastos del mes anterior. Después podés editar el monto si cambió.' }),
-        h('ul', { class: 'lista bloque' }, faltan.map((x) => h('li', {}, h('div', { class: 'cuerpo', text: `${x.categoria}${x.descripcion ? ' · ' + x.descripcion : ''}` }), h('span', { class: 'mono', text: plata(x.monto, x.moneda) }))))),
-      textoGuardar: 'Cargar ' + faltan.length,
-      alGuardar: () => datos.guardarMovimientos(faltan.map((x) => ({
-        tipo: 'gasto', fijo: true, categoria: x.categoria, descripcion: x.descripcion, monto: x.monto, moneda: x.moneda, medio_pago: x.medio_pago,
-        fecha: `${mes}-${String(Math.min(Number(x.fecha.slice(8, 10)), diasMes)).padStart(2, '0')}`,
-      }))),
-    });
-    if (ok) { aviso('Gastos fijos cargados.'); ruta(); }
-  }
-
-  $main.replaceChildren(
-    h('div', { class: 'encabezado' }, h('h1', { text: esAdmin() ? 'Ingresos y gastos' : 'Cargar plata' }),
-      h('button', { class: 'btn', text: '+ Gasto', onclick: async () => { if (await formMovimiento({ tipo: 'gasto' }, { clientes })) ruta(); } }),
-      h('button', { class: 'btn', text: '+ Ingreso', onclick: async () => { if (await formMovimiento({ tipo: 'ingreso' }, { clientes })) ruta(); } }),
-      h('button', { class: 'btn sec', text: 'Cargar gastos fijos del mes', onclick: () => intentar(cargarFijos).catch(() => {}) })),
-    esAdmin() ? null : h('p', { class: 'suave chico bloque', text: 'Acá ves lo que cargaste vos y los pagos de clientes. Los totales de la empresa los ve Luciano.' }),
-    h('div', { class: 'filtros' }, selMes, selTipo),
-    h('div', { class: 'panel tabla-env' }, h('table', { class: 'tabla-movs' },
-      h('thead', {}, h('tr', {}, ['Fecha', 'Tipo', 'Categoría', 'Detalle'].map((t) => h('th', { text: t })), h('th', { class: 'num', text: 'Monto' }), h('th', { class: 'num' }, h('span', { hidden: true, text: 'Acciones' })))),
-      cuerpoTabla, pie)));
+async function darDeBaja(m) {
+  const fin = hoyISO() < m.fecha ? m.fecha : hoyISO();
+  const ok = await dialogo({
+    titulo: 'Dar de baja "' + tituloMov(m) + '"',
+    cuerpo: h('p', { class: 'suave', text: `Se sigue contando en ${nombreMes(mesDe(fin))} y deja de contarse desde el mes que viene. Los meses anteriores no cambian.` }),
+    textoGuardar: 'Dar de baja',
+    peligro: true,
+    alGuardar: () => datos.guardarMovimiento({ id: m.id, fecha_fin: fin }),
+  });
+  if (ok) { aviso('Dado de baja'); ruta(); }
 }
 
-// ------------------------------------------------------------------
-// Analytics (solo Luciano)
-// ------------------------------------------------------------------
-async function vistaAnalytics() {
-  const [movs, acuerdos] = await Promise.all([datos.listarMovimientos(), datos.listarTodosAcuerdos()]);
+function filaMovimiento(m, nombres, { pref } = {}) {
+  const puedeEditar = esAdmin() || m.creado_por === yo.id;
+  const recurrente = (m.frecuencia || 'unico') !== 'unico';
+  return h('li', {},
+    h('span', { class: 'icono-mov ' + m.tipo }, icono(m.tipo)),
+    h('div', { class: 'cuerpo' },
+      h('p', {}, h('strong', { text: tituloMov(m) })),
+      h('p', { class: 'chico suave' },
+        h('span', { class: 'chip', text: m.categoria }), ' ',
+        recurrente ? h('span', { class: 'chip ' + m.frecuencia, text: nombreFrecuencia(m.frecuencia) + (m.fecha_fin ? ' · baja ' + fechaLinda(m.fecha_fin) : '') }) : null, ' ',
+        m.cliente_id && nombres[m.cliente_id] ? nombres[m.cliente_id] + ' · ' : '',
+        recurrente ? 'desde ' + fechaLinda(m.fecha) : fechaLinda(m.fecha))),
+    h('span', { class: 'monto ' + (m.tipo === 'ingreso' ? 'pos' : 'neg'), text: (m.tipo === 'ingreso' ? '+ ' : '− ') + plata(m.monto, m.moneda) }),
+    puedeEditar ? h('button', { class: 'btn sec mini btn-icono', 'aria-label': 'Editar ' + tituloMov(m), title: 'Editar', onclick: async () => { if (await formMovimiento(m)) ruta(); } }, icono('editar')) : null,
+    recurrente && activoHoy(m) && puedeEditar ? h('button', { class: 'btn sec mini', onclick: () => darDeBaja(m) }, 'Dar de baja') : null,
+    esAdmin() ? h('button', { class: 'btn peligro mini btn-icono', 'aria-label': 'Borrar ' + tituloMov(m), title: 'Borrar', onclick: async () => {
+      if (!await confirmar('¿Borrar "' + tituloMov(m) + '"?', recurrente ? 'Se borra de todos los meses, también de los pasados. Si solo dejó de pagarse, usá "Dar de baja".' : `${plata(m.monto, m.moneda)} del ${fechaLinda(m.fecha)}. No se puede deshacer.`)) return;
+      await intentar(() => datos.borrarMovimiento(m.id), 'Borrado'); ruta();
+    } }, icono('borrar')) : null);
+}
+
+async function vistaFinanzas() {
   const params = new URLSearchParams(location.hash.split('?')[1] || '');
-  const hoy = hoyISO();
-  const anioHoy = Number(hoy.slice(0, 4));
-  const anios = [...new Set([anioHoy, ...movs.map((x) => Number(x.fecha.slice(0, 4)))])].sort((x, y) => y - x);
-  const anio = Number(params.get('anio')) || anioHoy;
-  const monedasConDatos = [...new Set(movs.map((x) => x.moneda))];
+  const hoyPref = mesDe(hoyISO());
+  const pref = /^\d{4}-\d{2}$/.test(params.get('mes') || '') ? params.get('mes') : hoyPref;
+  const [movsTodos, acuerdos, clientes] = await Promise.all([datos.listarMovimientos(), datos.listarTodosAcuerdos(), datos.listarClientes()]);
+  const nombres = Object.fromEntries(clientes.map((c) => [c.id, c.nombre]));
+  const monedasConDatos = [...new Set(movsTodos.map((x) => x.moneda))];
   const moneda = ['ARS', 'USD'].includes(params.get('moneda')) ? params.get('moneda') : (monedasConDatos.includes('ARS') || !monedasConDatos.length ? 'ARS' : 'USD');
-  const ir = (an, mo) => { location.hash = `#/analytics?anio=${an}&moneda=${mo}`; };
-  const selAnio = sel('anio', anios.map((x) => [x, String(x)]), anio, { 'aria-label': 'Año' });
-  const selMon = sel('moneda', [['ARS', 'Pesos (ARS)'], ['USD', 'Dólares (USD)']], moneda, { 'aria-label': 'Moneda' });
-  selAnio.addEventListener('change', () => ir(selAnio.value, selMon.value));
-  selMon.addEventListener('change', () => ir(selAnio.value, selMon.value));
+  const ir = (p, mo) => { location.hash = `#/finanzas?mes=${p}&moneda=${mo}`; };
+  const movs = movsTodos.filter((x) => x.moneda === moneda);
+  const anio = Number(pref.slice(0, 4));
+  const esGasto = (m) => m.tipo === 'gasto';
+  const esIngreso = (m) => m.tipo === 'ingreso';
+  const de = (f) => (m) => (m.frecuencia || 'unico') === f;
 
-  const delAnio = movs.filter((x) => x.moneda === moneda && x.fecha.startsWith(String(anio)));
-  const meses = MESES.map((nombre, i) => {
-    const pref = `${anio}-${String(i + 1).padStart(2, '0')}`;
-    const mm = delAnio.filter((x) => x.fecha.startsWith(pref));
-    const ingresos = sumar(mm.filter((x) => x.tipo === 'ingreso'));
-    const fijos = sumar(mm.filter((x) => x.tipo === 'gasto' && x.fijo));
-    const varios = sumar(mm.filter((x) => x.tipo === 'gasto' && !x.fijo));
-    return { nombre, largo: MESES_LARGOS[i], pref, ingresos, fijos, varios, gastos: fijos + varios, resultado: ingresos - fijos - varios };
+  // Costo fijo: mensuales + anuales/12 que siguen activos
+  const fijosActivos = movs.filter((m) => esGasto(m) && (m.frecuencia === 'mensual' || m.frecuencia === 'anual') && activoHoy(m));
+  const costoFijo = fijosActivos.reduce((t, m) => t + Number(m.monto) / (m.frecuencia === 'anual' ? 12 : 1), 0);
+  const ingMes = sumarMes(movs, pref, esIngreso), gasMes = sumarMes(movs, pref, esGasto);
+  const mesesAnio = MESES.map((nombre, i) => {
+    const p = prefMes(anio, i + 1);
+    const futuro = p > hoyPref;
+    const v = (f) => (futuro ? 0 : sumarMes(movs, p, f));
+    const ingresos = v(esIngreso);
+    const mensuales = v((m) => esGasto(m) && de('mensual')(m));
+    const anuales = v((m) => esGasto(m) && de('anual')(m));
+    const unicos = v((m) => esGasto(m) && de('unico')(m));
+    return { nombre, largo: MESES_LARGOS[i], pref: p, futuro, ingresos, mensuales, anuales, unicos, gastos: mensuales + anuales + unicos, resultado: ingresos - mensuales - anuales - unicos };
   });
-  const tot = meses.reduce((t, x) => ({ ingresos: t.ingresos + x.ingresos, fijos: t.fijos + x.fijos, varios: t.varios + x.varios, gastos: t.gastos + x.gastos, resultado: t.resultado + x.resultado }), { ingresos: 0, fijos: 0, varios: 0, gastos: 0, resultado: 0 });
-  const mesesTranscurridos = anio < anioHoy ? 12 : anio > anioHoy ? 0 : Number(hoy.slice(5, 7));
-  const iMes = anio === anioHoy ? Number(hoy.slice(5, 7)) - 1 : 11;
-  const esteMes = meses[iMes];
-  const anterior = iMes > 0 ? meses[iMes - 1] : null;
+  const tot = mesesAnio.reduce((t, x) => { for (const k of ['ingresos', 'mensuales', 'anuales', 'unicos', 'gastos', 'resultado']) t[k] += x[k]; return t; }, { ingresos: 0, mensuales: 0, anuales: 0, unicos: 0, gastos: 0, resultado: 0 });
 
-  // Por cobrar: saldo de tratos de proyecto vigentes en esta moneda
-  const ingresosPorAcuerdo = {};
-  for (const x of movs) if (x.tipo === 'ingreso' && x.acuerdo_id) ingresosPorAcuerdo[x.acuerdo_id] = (ingresosPorAcuerdo[x.acuerdo_id] || 0) + Number(x.monto);
+  // Por cobrar a clientes (tratos de proyecto vigentes)
+  const cobradoPorAcuerdo = {};
+  for (const x of movsTodos) if (x.tipo === 'ingreso' && x.acuerdo_id) cobradoPorAcuerdo[x.acuerdo_id] = (cobradoPorAcuerdo[x.acuerdo_id] || 0) + Number(x.monto);
   const porCobrar = acuerdos.filter((x) => x.moneda === moneda && x.estado === 'vigente' && x.tipo !== 'mensual')
-    .reduce((t, x) => t + Math.max(0, Number(x.monto) - (ingresosPorAcuerdo[x.id] || 0)), 0);
-  const abonos = acuerdos.filter((x) => x.moneda === moneda && x.estado === 'vigente' && x.tipo === 'mensual').reduce((t, x) => t + Number(x.monto), 0);
+    .reduce((t, x) => t + Math.max(0, Number(x.monto) - (cobradoPorAcuerdo[x.id] || 0)), 0);
 
-  const kpi = (t, v, extra, clase) => h('div', { class: 'kpi' }, h('span', { text: t }), h('strong', { class: clase || '', text: v }), extra ? h('small', { text: extra }) : null);
-  const variacion = (a, b) => (b ? ((a - b) / b * 100).toFixed(0) + '% vs. ' + anterior.largo : null);
+  const kpi = (t, v, extra, clase = '') => h('div', { class: 'kpi ' + clase }, h('span', { text: t }), h('strong', { text: v }), extra ? h('small', { text: extra }) : null);
+  const resMes = ingMes - gasMes;
   const kpis = h('div', { class: 'kpis' },
-    kpi('Ingresos ' + anio, plata(tot.ingresos, moneda), mesesTranscurridos ? 'Promedio por mes: ' + plata(tot.ingresos / mesesTranscurridos, moneda) : null),
-    kpi('Gastos ' + anio, plata(tot.gastos, moneda), `Fijos ${plata(tot.fijos, moneda)} · varios ${plata(tot.varios, moneda)}`),
-    kpi('Resultado ' + anio, plata(tot.resultado, moneda), tot.ingresos ? 'Margen ' + (tot.resultado / tot.ingresos * 100).toFixed(0) + '%' : null, tot.resultado >= 0 ? 'pos' : 'neg'),
-    kpi('Ingresos de ' + esteMes.largo, plata(esteMes.ingresos, moneda), anterior ? variacion(esteMes.ingresos, anterior.ingresos) : null),
-    kpi('Gastos de ' + esteMes.largo, plata(esteMes.gastos, moneda), `Fijos ${plata(esteMes.fijos, moneda)} · varios ${plata(esteMes.varios, moneda)}`),
-    kpi('Por cobrar', plata(porCobrar, moneda), abonos ? 'Abonos mensuales vigentes: ' + plata(abonos, moneda) + '/mes' : 'Saldo de tratos vigentes'));
+    kpi('Costo fijo por mes', plata(costoFijo, moneda), `${fijosActivos.length} gastos mensuales y anuales activos`, 'destacado'),
+    kpi('Ingresos de ' + MESES_LARGOS[Number(pref.slice(5)) - 1], plata(ingMes, moneda)),
+    kpi('Gastos de ' + MESES_LARGOS[Number(pref.slice(5)) - 1], plata(gasMes, moneda)),
+    kpi('Resultado del mes', plata(resMes, moneda), ingMes ? 'Margen ' + Math.round(resMes / ingMes * 100) + '%' : null),
+    kpi('Resultado ' + anio, plata(tot.resultado, moneda), anio === Number(hoyPref.slice(0, 4)) ? 'Hasta hoy' : null),
+    kpi('Por cobrar a clientes', plata(porCobrar, moneda), 'Saldo de tratos vigentes'));
 
-  // Gastos por categoría
-  const porCat = {};
-  for (const x of delAnio) if (x.tipo === 'gasto') porCat[x.categoria] = (porCat[x.categoria] || 0) + Number(x.monto);
-  const cats = Object.entries(porCat).sort((p, q) => q[1] - p[1]);
+  // Carga rápida
+  const carga = h('section', { class: 'panel' }, h('h2', { text: 'Cargar' }),
+    h('div', { class: 'carga-rapida' },
+      h('button', { class: 'btn', onclick: async () => { if (await formMovimiento({ tipo: 'ingreso', moneda })) ruta(); } }, icono('ingreso'), 'Ingreso'),
+      h('button', { class: 'btn gasto', onclick: async () => { if (await formMovimiento({ tipo: 'gasto', moneda })) ruta(); } }, icono('gasto'), 'Gasto')),
+    h('p', { class: 'chico suave bloque', text: 'Los gastos mensuales y anuales se cargan una sola vez: el panel los cuenta solo hasta que les des de baja.' }));
 
-  const graf1 = h('section', { class: 'panel' }, h('h2', { text: 'Ingresos y gastos por mes' }),
+  // Movimientos del mes (incluye los recurrentes)
+  const delMes = movs.filter((m) => cuentaEnMes(m, pref)).sort((a, b) => (a.tipo === b.tipo ? String(b.fecha).localeCompare(String(a.fecha)) : a.tipo === 'ingreso' ? -1 : 1));
+  const mesNav = h('div', { class: 'mes-nav' },
+    h('button', { class: 'btn sec mini btn-icono', 'aria-label': 'Mes anterior', onclick: () => ir(moverMes(pref, -1), moneda) }, icono('izq')),
+    h('strong', { text: nombreMes(pref) }),
+    h('button', { class: 'btn sec mini btn-icono', 'aria-label': 'Mes siguiente', onclick: () => ir(moverMes(pref, 1), moneda) }, icono('der')),
+    pref !== hoyPref ? h('button', { class: 'btn sec mini', text: 'Hoy', onclick: () => ir(hoyPref, moneda) }) : null);
+  const pMes = h('section', { class: 'panel' },
+    h('h2', {}, 'Movimientos', mesNav),
+    delMes.length ? h('ul', { class: 'lista' }, delMes.map((m) => filaMovimiento(m, nombres, { pref }))) : h('p', { class: 'vacio', text: 'No hay movimientos en ' + nombreMes(pref) + '. Cargá uno con los botones de arriba.' }));
+
+  // Gastos fijos activos
+  const pFijos = h('section', { class: 'panel' },
+    h('h2', { text: 'Gastos mensuales y anuales activos' }),
+    fijosActivos.length ? h('ul', { class: 'lista' }, fijosActivos.sort((a, b) => b.monto / (b.frecuencia === 'anual' ? 12 : 1) - a.monto / (a.frecuencia === 'anual' ? 12 : 1)).map((m) => filaMovimiento(m, nombres))) :
+      h('p', { class: 'suave', text: 'Todavía no hay gastos fijos. Cargá un gasto y elegí "Mensual" o "Anual".' }));
+
+  // Gráficos
+  const porDestino = {};
+  for (const x of mesesAnio) if (!x.futuro) for (const m of movs) if (esGasto(m) && cuentaEnMes(m, x.pref)) porDestino[m.categoria] = (porDestino[m.categoria] || 0) + Number(m.monto);
+  const cats = Object.entries(porDestino).sort((p, q) => q[1] - p[1]);
+  const graf1 = h('section', { class: 'panel' }, h('h2', { text: 'Ingresos y gastos · ' + anio }),
     h('div', { class: 'leyenda' }, h('span', {}, h('i', { class: 'serie-ingreso' }), 'Ingresos'), h('span', {}, h('i', { class: 'serie-gasto' }), 'Gastos')),
-    graficoMeses(meses, moneda));
-  const graf2 = h('section', { class: 'panel' }, h('h2', { text: 'Gastos por categoría · ' + anio }),
+    graficoMeses(mesesAnio, moneda));
+  const graf2 = h('section', { class: 'panel' }, h('h2', { text: 'Gastos por destino · ' + anio }),
     cats.length ? graficoCategorias(cats, moneda, tot.gastos) : h('p', { class: 'vacio', text: 'Sin gastos en ' + anio + '.' }));
 
+  // Resumen mensual y anual
   const celda = (v, clase = '') => h('td', { class: 'num ' + clase, text: plata(v, moneda) });
-  const tabla = h('section', { class: 'panel tabla-env' }, h('h2', { text: 'Resumen mensual y anual · ' + moneda }),
+  const tabla = h('section', { class: 'panel tabla-env' }, h('h2', { text: 'Resumen mensual y anual · ' + anio }),
     h('table', {},
-      h('thead', {}, h('tr', {}, h('th', { text: 'Mes' }), ['Ingresos', 'Gastos fijos', 'Gastos varios', 'Gastos totales', 'Resultado'].map((t) => h('th', { class: 'num', text: t })))),
-      h('tbody', {}, meses.map((x) => h('tr', {}, h('td', {}, h('a', { href: '#/plata?mes=' + x.pref, text: x.largo })), celda(x.ingresos), celda(x.fijos), celda(x.varios), celda(x.gastos), celda(x.resultado, x.resultado >= 0 ? 'pos' : 'neg')))),
-      h('tfoot', {}, h('tr', { class: 'total' }, h('td', { text: 'Total ' + anio }), celda(tot.ingresos), celda(tot.fijos), celda(tot.varios), celda(tot.gastos), celda(tot.resultado, tot.resultado >= 0 ? 'pos' : 'neg')))));
+      h('thead', {}, h('tr', {}, h('th', { text: 'Mes' }), ['Ingresos', 'Gastos mensuales', 'Gastos anuales', 'Gastos únicos', 'Resultado'].map((t) => h('th', { class: 'num', text: t })))),
+      h('tbody', {}, mesesAnio.filter((x) => !x.futuro).map((x) => h('tr', {}, h('td', {}, h('a', { href: `#/finanzas?mes=${x.pref}&moneda=${moneda}`, text: x.largo })), celda(x.ingresos), celda(x.mensuales), celda(x.anuales), celda(x.unicos), celda(x.resultado, x.resultado >= 0 ? 'pos' : 'neg')))),
+      h('tfoot', {}, h('tr', { class: 'total' }, h('td', { text: 'Total ' + anio }), celda(tot.ingresos), celda(tot.mensuales), celda(tot.anuales), celda(tot.unicos), celda(tot.resultado, tot.resultado >= 0 ? 'pos' : 'neg')))));
 
-  // Comparación entre años
-  const porAnio = anios.map((an) => {
-    const l = movs.filter((x) => x.moneda === moneda && x.fecha.startsWith(String(an)));
-    const i = sumar(l.filter((x) => x.tipo === 'ingreso')), g = sumar(l.filter((x) => x.tipo === 'gasto'));
-    return { an, i, g, r: i - g };
-  });
-  const tablaAnios = porAnio.length > 1 ? h('section', { class: 'panel tabla-env' }, h('h2', { text: 'Año por año · ' + moneda }),
-    h('table', {}, h('thead', {}, h('tr', {}, h('th', { text: 'Año' }), ['Ingresos', 'Gastos', 'Resultado'].map((t) => h('th', { class: 'num', text: t })))),
-      h('tbody', {}, porAnio.map((x) => h('tr', {}, h('td', { text: String(x.an) }), celda(x.i), celda(x.g), celda(x.r, x.r >= 0 ? 'pos' : 'neg')))))) : null;
-
-  // Gastos varios del año (detalle)
-  const varios = delAnio.filter((x) => x.tipo === 'gasto' && !x.fijo).slice(0, 50);
-  const tablaVarios = h('section', { class: 'panel tabla-env' }, h('h2', { text: 'Gastos varios · ' + anio }),
-    varios.length ? h('table', {}, h('thead', {}, h('tr', {}, ['Fecha', 'Categoría', 'Detalle'].map((t) => h('th', { text: t })), h('th', { class: 'num', text: 'Monto' }))),
-      h('tbody', {}, varios.map((x) => h('tr', {}, h('td', { class: 'mono chico', text: fechaLinda(x.fecha) }), h('td', { text: x.categoria }), h('td', { text: x.descripcion || '' }), celda(x.monto))))) :
-      h('p', { class: 'suave', text: 'Sin gastos varios en ' + anio + '.' }));
+  const monSeg = segmento('moneda-vista', [['ARS', 'Pesos'], ['USD', 'Dólares']], moneda);
+  monSeg.addEventListener('change', (ev) => ir(pref, ev.target.value));
 
   $main.replaceChildren(
-    h('div', { class: 'encabezado' }, h('h1', { text: 'Analytics' })),
-    h('div', { class: 'filtros' }, selAnio, selMon),
-    monedasConDatos.length > 1 ? h('p', { class: 'suave chico bloque', text: 'Pesos y dólares se muestran por separado, sin convertir. Cambiá la moneda arriba.' }) : null,
+    h('div', { class: 'encabezado' }, h('h1', { text: 'Finanzas' }), monSeg),
+    monedasConDatos.length > 1 ? h('p', { class: 'suave chico bloque', text: 'Pesos y dólares se cuentan por separado, sin convertir.' }) : null,
+    carga,
     kpis,
-    h('div', { class: 'graficos' }, graf1, graf2),
-    h('div', { class: 'bloque' }, tabla),
-    tablaAnios ? h('div', { class: 'bloque' }, tablaAnios) : null,
-    h('div', { class: 'bloque' }, tablaVarios));
+    pMes,
+    h('div', { class: 'graficos bloque' }, pFijos, graf2),
+    h('div', { class: 'bloque' }, graf1),
+    h('div', { class: 'bloque' }, tabla));
 }
 
+// ------------------------------------------------------------------
+// Gráficos
+// ------------------------------------------------------------------
 // Escala "linda": 0, 250 mil, 500 mil…
 function escala(max) {
   if (max <= 0) return { tope: 1, paso: 1 };
@@ -833,8 +903,8 @@ function graficoMeses(meses, moneda) {
   meses.forEach((x, i) => {
     const cx = m.l + banda * i + banda / 2;
     svg.append(
-      s('path', { d: barra(cx - bw - 1, y(x.ingresos), bw, m.t + alto - y(x.ingresos)), fill: '#3D8BE0' }),
-      s('path', { d: barra(cx + 1, y(x.gastos), bw, m.t + alto - y(x.gastos)), fill: '#C0638A' }),
+      s('path', { d: barra(cx - bw - 1, y(x.ingresos), bw, m.t + alto - y(x.ingresos)), fill: '#0057B8' }),
+      s('path', { d: barra(cx + 1, y(x.gastos), bw, m.t + alto - y(x.gastos)), fill: '#9C4A6B' }),
       s('text', { class: 'eje', x: cx, y: H - 8, 'text-anchor': 'middle' }, x.nombre));
     const hit = s('rect', { x: m.l + banda * i, y: m.t, width: banda, height: alto, fill: 'transparent' });
     const mostrar = () => {

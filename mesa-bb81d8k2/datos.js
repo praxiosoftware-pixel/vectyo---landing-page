@@ -4,7 +4,7 @@
 const cfg = window.VECTYO_CONFIG || {};
 const configurado = cfg.supabaseUrl && !cfg.supabaseUrl.startsWith('PEGAR');
 const esLocal = ['localhost', '127.0.0.1'].includes(location.hostname);
-export const MODO_DEMO = !configurado && esLocal;
+export const MODO_DEMO = esLocal && (!configurado || new URLSearchParams(location.search).has('demo'));
 
 function falla(error) {
   if (!error) return;
@@ -188,15 +188,18 @@ function crearDemo() {
   const a2 = { id: uid(), cliente_id: c3.id, concepto: 'Manejo de redes', tipo: 'mensual', monto: 250, moneda: 'USD', fecha: f(1, 10), estado: 'vigente', condiciones: 'Se cobra del 1 al 10 de cada mes' };
   db.acuerdos.push(a1, a2);
   db.historial.push({ id: uid(), cliente_id: c1.id, fecha: f(hoy.getMonth() + 1, 1), texto: 'Cobramos la seña y arrancamos el diseño.', creado_en: new Date().toISOString() });
-  const mov = (fecha, tipo, categoria, monto, moneda, extra = {}) => db.movimientos.push({ id: uid(), fecha, tipo, categoria, monto, moneda, descripcion: '', fijo: false, creado_por: 'demo-otro', creado_en: new Date().toISOString(), ...extra });
-  mov(f(Math.max(1, hoy.getMonth()), 6), 'ingreso', 'Seña', 450000, 'ARS', { cliente_id: c1.id, acuerdo_id: a1.id });
+  const mov = (fecha, tipo, categoria, monto, moneda, extra = {}) => db.movimientos.push({ id: uid(), fecha, tipo, categoria, monto, moneda, descripcion: categoria, frecuencia: 'unico', fecha_fin: null, creado_por: 'demo-otro', creado_en: new Date().toISOString(), ...extra });
+  mov(f(Math.max(1, hoy.getMonth()), 6), 'ingreso', 'Seña', 450000, 'ARS', { descripcion: 'Seña web La Espiga', cliente_id: c1.id, acuerdo_id: a1.id });
+  mov(f(1, 3), 'gasto', 'Otro', 25000, 'ARS', { descripcion: 'Artlist Pro', frecuencia: 'mensual' });
+  mov(f(1, 5), 'gasto', 'Hosting', 8000, 'ARS', { descripcion: 'Hosting web clientes', frecuencia: 'mensual' });
+  mov(f(3, 1), 'gasto', 'Herramienta IA', 20, 'USD', { descripcion: 'Claude Pro', frecuencia: 'mensual' });
+  mov(f(2, 15), 'gasto', 'Dominios', 18000, 'ARS', { descripcion: 'Dominio vectyo.com', frecuencia: 'anual' });
+  mov(f(1, 10), 'gasto', 'Base de datos', 9000, 'ARS', { descripcion: 'Base de datos vieja', frecuencia: 'mensual', fecha_fin: f(6, 30) });
+  mov(f(1, 9), 'ingreso', 'Abono mensual', 250, 'USD', { descripcion: 'Redes Gimnasio Pulso', frecuencia: 'mensual', cliente_id: c3.id, acuerdo_id: a2.id });
   for (let m = 1; m <= hoy.getMonth() + 1; m++) {
-    mov(f(m, 3), 'gasto', 'Software y suscripciones', 25000, 'ARS', { descripcion: 'Artlist Pro', fijo: true });
-    mov(f(m, 5), 'gasto', 'Hosting y dominios', 8000, 'ARS', { fijo: true });
     if (m % 2) mov(f(m, 14), 'gasto', 'Publicidad', 30000 + m * 2000, 'ARS', { descripcion: 'Anuncios Instagram' });
-    if (m % 3 === 0) mov(f(m, 20), 'gasto', 'Varios', 12000, 'ARS', { descripcion: 'Café con cliente' });
-    mov(f(m, 8), 'ingreso', 'Pago de proyecto', 200000 + m * 35000, 'ARS');
-    mov(f(m, 9), 'ingreso', 'Abono mensual', 250, 'USD', { cliente_id: c3.id, acuerdo_id: a2.id });
+    if (m % 3 === 0) mov(f(m, 20), 'gasto', 'Otro', 12000, 'ARS', { descripcion: 'Café con cliente' });
+    mov(f(m, 8), 'ingreso', 'Pago de proyecto', 200000 + m * 35000, 'ARS', { descripcion: 'Proyecto web' });
   }
 
   const espera = (x) => new Promise((r) => setTimeout(() => r(structuredClone(x)), 120));
@@ -267,4 +270,4 @@ function crearDemo() {
   };
 }
 
-export const datos = MODO_DEMO ? crearDemo() : (configurado ? crearSupabase() : null);
+export const datos = MODO_DEMO ? crearDemo() : (configurado ? crearSupabase() : null); // demo solo en localhost
