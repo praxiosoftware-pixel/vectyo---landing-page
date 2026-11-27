@@ -44,6 +44,9 @@ function h(tag, props, ...hijos) {
   }
   return el;
 }
+// Reemplaza el contenido de un elemento salteando los vacíos (null/false),
+// que replaceChildren escribiría como texto "null".
+function poner(el, ...hijos) { el.replaceChildren(...hijos.flat(Infinity).filter((x) => x != null && x !== false)); }
 function enlaceSeguro(u) {
   const s = String(u).trim();
   if (s.startsWith('#') || /^https:\/\//i.test(s) || /^mailto:/i.test(s)) return s;
@@ -104,7 +107,7 @@ function urlWeb(u) { const x = String(u || '').trim(); if (!x) return null; retu
 function aviso(msg, mal = false) {
   const box = document.getElementById('aviso');
   const d = h('div', { class: mal ? 'mal' : '', text: msg });
-  box.replaceChildren(d);
+  poner(box, d);
   setTimeout(() => d.remove(), mal ? 6000 : 3000);
 }
 async function intentar(fn, ok) {
@@ -226,7 +229,7 @@ function caja(...hijos) {
 }
 
 function pantallaSinConfigurar() {
-  $app.replaceChildren(caja(h('h1', { text: 'Falta configurar' }),
+  poner($app, caja(h('h1', { text: 'Falta configurar' }),
     h('p', { class: 'suave', text: 'Este panel todavía no está conectado a la base de datos. Seguí los pasos de INSTALACION.md.' })));
 }
 
@@ -244,7 +247,7 @@ function pantallaLogin(msg) {
     try { await datos.iniciarSesion(String(fd.get('email')).trim(), String(fd.get('password'))); await iniciar(); }
     catch (e) { error.textContent = e.message; btn.disabled = false; }
   });
-  $app.replaceChildren(caja(h('h1', { text: 'Panel Vectyo' }), h('p', { class: 'suave', text: 'Entrá con tu mail y contraseña.' }), form));
+  poner($app, caja(h('h1', { text: 'Panel Vectyo' }), h('p', { class: 'suave', text: 'Entrá con tu mail y contraseña.' }), form));
 }
 
 async function pantallaMfa(mfa) {
@@ -258,7 +261,7 @@ async function pantallaMfa(mfa) {
     partes.push(h('h1', { text: 'Código de seguridad' }),
       h('p', { class: 'suave', text: 'Abrí Google Authenticator en tu celular y escribí el código de 6 números de "Panel Vectyo".' }));
   } else {
-    $app.replaceChildren(caja(h('p', { class: 'suave', text: 'Preparando…' })));
+    poner($app, caja(h('p', { class: 'suave', text: 'Preparando…' })));
     let ins;
     try { ins = await datos.inscribirMfa(); } catch (e) { return pantallaLogin(e.message); }
     factorId = ins.factorId;
@@ -279,12 +282,12 @@ async function pantallaMfa(mfa) {
     try { await datos.verificarMfa(factorId, codigo.value.replace(/\D/g, '')); await iniciar(); }
     catch (e) { error.textContent = e.message; btn.disabled = false; codigo.select(); }
   });
-  $app.replaceChildren(caja(...partes, form));
+  poner($app, caja(...partes, form));
   codigo.focus();
 }
 
 function pantallaSinPermiso() {
-  $app.replaceChildren(caja(h('h1', { text: 'Sin acceso' }),
+  poner($app, caja(h('h1', { text: 'Sin acceso' }),
     h('p', { class: 'suave', text: 'Tu usuario existe pero no tiene permiso para ver el panel. Pedíselo a Luciano.' }),
     h('button', { class: 'btn sec ancho', text: 'Salir', onclick: salir })));
 }
@@ -331,7 +334,7 @@ function armarMarco() {
   const nav = h('nav', { class: 'nav', 'aria-label': 'Secciones' }, links.map(([href, t, ic]) => h('a', { href }, icono(ic), t)));
   const tabbar = h('nav', { class: 'tabbar', 'aria-label': 'Secciones' }, links.map(([href, t, ic]) => h('a', { href }, icono(ic), t)));
   $main = h('main', { id: 'contenido' });
-  $app.replaceChildren(
+  poner($app, 
     h('header', { class: 'barra' },
       h('a', { class: 'marca', href: '#/clientes' }, h('img', { src: 'isotipo-ciruela.svg', alt: '' }), 'VECTYO'),
       nav,
@@ -356,7 +359,7 @@ async function ruta() {
   const [, seccionCruda, id] = location.hash.split('?')[0].split('/');
   const seccion = seccionCruda || 'clientes';
   marcarNav();
-  $main.replaceChildren(h('p', { class: 'cargando', text: 'Cargando…' }));
+  poner($main, h('p', { class: 'cargando', text: 'Cargando…' }));
   try {
     if (seccion === 'cliente' && id) await vistaFicha(decodeURIComponent(id));
     else if (['finanzas', 'plata', 'analytics'].includes(seccion)) await vistaFinanzas();
@@ -364,7 +367,7 @@ async function ruta() {
     else await vistaClientes();
   } catch (e) {
     console.error(e);
-    $main.replaceChildren(h('div', { class: 'panel' }, h('p', { class: 'error', text: e.message || 'No se pudo cargar.' })));
+    poner($main, h('div', { class: 'panel' }, h('p', { class: 'error', text: e.message || 'No se pudo cargar.' })));
   }
   window.scrollTo(0, 0);
 }
@@ -398,14 +401,14 @@ async function vistaClientes() {
     const q = buscar.value.trim().toLowerCase();
     const lista = clientes.filter((c) => (!etapa.value || c.etapa === etapa.value) &&
       (!q || [c.nombre, c.rubro, c.ciudad, c.contacto].join(' ').toLowerCase().includes(q)));
-    grilla.replaceChildren(...lista.map((c) => h('a', { class: 'tarjeta', href: '#/cliente/' + encodeURIComponent(c.id) },
+    poner(grilla, ...lista.map((c) => h('a', { class: 'tarjeta', href: '#/cliente/' + encodeURIComponent(c.id) },
       avatar(c), h('span', { class: 'nombre', text: c.nombre }), h('span', { class: 'chip etapa-' + c.etapa, text: nombreEtapa(c.etapa) }))));
-    if (!lista.length) grilla.replaceChildren(h('p', { class: 'vacio', text: clientes.length ? 'No hay clientes con ese filtro.' : 'Todavía no hay clientes. Tocá "Nuevo cliente".' }));
+    if (!lista.length) poner(grilla, h('p', { class: 'vacio', text: clientes.length ? 'No hay clientes con ese filtro.' : 'Todavía no hay clientes. Tocá "Nuevo cliente".' }));
   }
   buscar.addEventListener('input', pintar);
   etapa.addEventListener('change', pintar);
   pintar();
-  $main.replaceChildren(
+  poner($main, 
     h('div', { class: 'encabezado' }, h('h1', { text: 'Clientes' }), h('span', { class: 'suave chico', text: clientes.length + ' en total' }),
       h('button', { class: 'btn', onclick: async () => { const c = await formCliente(); if (c) location.hash = '#/cliente/' + c.id; } }, icono('mas'), 'Nuevo cliente')),
     h('div', { class: 'filtros' }, buscar, etapa),
@@ -600,7 +603,7 @@ async function vistaFicha(id) {
 
   const pNotas = c.notas ? h('section', { class: 'panel' }, h('h2', { text: 'Notas' }), h('p', { class: 'texto-largo', text: c.notas })) : null;
 
-  $main.replaceChildren(
+  poner($main, 
     h('a', { class: 'volver', href: '#/clientes' }, icono('volver'), 'Clientes'),
     cab,
     h('div', { class: 'ficha-grilla' }, pPersona, pDatos, pPlata, pArchivos, pHistorial, pNotas));
@@ -693,7 +696,7 @@ async function formMovimiento(m = {}, { cliente, acuerdos } = {}) {
     const opciones = tipo === 'gasto' ? CAT_GASTO : CAT_INGRESO;
     const actual = contDestino.querySelector('[name="categoria"]:checked')?.value || m.categoria;
     const lista = actual && !opciones.includes(actual) && (m.tipo || tipoInicial) === tipo ? [...opciones, actual] : opciones;
-    contDestino.replaceChildren(h('span', { class: 'suave chico campo', text: tipo === 'gasto' ? 'Destino del gasto *' : 'Tipo de ingreso *' }),
+    poner(contDestino, h('span', { class: 'suave chico campo', text: tipo === 'gasto' ? 'Destino del gasto *' : 'Tipo de ingreso *' }),
       chipsRadio('categoria', lista, lista.includes(actual) ? actual : ''));
     ayudaFecha.textContent = freq === 'mensual' ? 'Desde (primer mes)' : freq === 'anual' ? 'Fecha del pago anual' : 'Fecha';
     notaRecurrente.textContent = freq === 'mensual' ? 'Se cuenta solo todos los meses, hasta que le des de baja. No hace falta volver a cargarlo.'
@@ -851,7 +854,7 @@ async function vistaFinanzas() {
   const monSeg = segmento('moneda-vista', [['ARS', 'Pesos'], ['USD', 'Dólares']], moneda);
   monSeg.addEventListener('change', (ev) => ir(pref, ev.target.value));
 
-  $main.replaceChildren(
+  poner($main, 
     h('div', { class: 'encabezado' }, h('h1', { text: 'Finanzas' }), monSeg),
     monedasConDatos.length > 1 ? h('p', { class: 'suave chico bloque', text: 'Pesos y dólares se cuentan por separado, sin convertir.' }) : null,
     carga,
@@ -879,7 +882,7 @@ function barra(x, y, w, alto, r = 4) {
   return `M${x},${y + alto}V${y + rr}Q${x},${y} ${x + rr},${y}H${x + w - rr}Q${x + w},${y} ${x + w},${y + rr}V${y + alto}Z`;
 }
 function ponerTooltip(cont, tip, x, y, titulo, filas) {
-  tip.replaceChildren(h('b', { text: titulo }), ...filas.map(([color, t]) => h('div', {}, color ? h('i', { class: color }) : null, t)));
+  poner(tip, h('b', { text: titulo }), ...filas.map(([color, t]) => h('div', {}, color ? h('i', { class: color }) : null, t)));
   tip.hidden = false;
   const r = cont.getBoundingClientRect();
   tip.style.left = Math.max(70, Math.min(r.width - 70, x)) + 'px';
@@ -960,7 +963,7 @@ async function vistaRegistro() {
     });
     descargar('pipeline.csv', '﻿' + [cab.join(','), ...filas].join('\r\n') + '\r\n', 'text/csv;charset=utf-8');
   };
-  $main.replaceChildren(
+  poner($main, 
     h('div', { class: 'encabezado' }, h('h1', { text: 'Registro y copias' })),
     h('section', { class: 'panel' }, h('h2', { text: 'Copias de seguridad' }),
       h('p', { class: 'suave bloque', text: 'Una vez por semana: descargá la copia y guardala en la carpeta privada de Drive "Vectyo/Copias del panel". Los PDF no van en la copia: guardá los originales también en Drive.' }),
