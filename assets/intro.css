@@ -279,32 +279,12 @@ html.intro-on:not(.intro-js) .intro { animation: intro-respaldo .6s 3.5s forward
 .intro__slider.is-volviendo .intro__estela { transition: transform .5s cubic-bezier(.3, 1.5, .5, 1), width .5s cubic-bezier(.3, 1.5, .5, 1); }
 .intro__slider.is-arrastrando .intro__perilla { transform: translateX(var(--x)) scale(1.06); }
 
-.intro__saltar {
-  position: absolute;
-  top: max(16px, env(safe-area-inset-top));
-  right: 16px;
-  padding: 10px 16px;
-  border: 1px solid rgb(255 255 255 / .16);
-  border-radius: 999px;
-  background: rgb(255 255 255 / .06);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-  color: rgb(255 255 255 / .7);
-  font: 500 .8125rem/1 var(--fuente, "Inter", system-ui, sans-serif);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity .6s ease 1s, color .2s, background .2s;
-}
-.intro.is-luz .intro__saltar { opacity: 1; }
-.intro__saltar:hover { color: #fff; background: rgb(255 255 255 / .12); }
-
 /* ---------- Salida: se desbloquea la web ---------- */
 html.intro-on .intro.is-saliendo {
   pointer-events: none;
   opacity: 0;
   transition: opacity 2s cubic-bezier(.45, 0, .25, 1);
 }
-.intro.is-saliendo .intro__saltar { opacity: 0; transition: opacity .5s ease; }
 .intro.is-saliendo .intro__escena {
   transform: scale(1.08);
   filter: blur(10px);

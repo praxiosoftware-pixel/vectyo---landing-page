@@ -10,7 +10,6 @@
   var grupoTrazos = svg.querySelector(".intro__trazos");
   var slider = intro.querySelector(".intro__slider");
   var perilla = intro.querySelector(".intro__perilla");
-  var saltar = intro.querySelector(".intro__saltar");
   var brillo = svg.querySelector("animateTransform");
   var NS = "http://www.w3.org/2000/svg";
   var listo = false;
@@ -97,7 +96,6 @@
   perilla.addEventListener("keydown", function (e) {
     if (["Enter", " ", "ArrowRight", "End"].indexOf(e.key) > -1) { e.preventDefault(); desbloquear(); }
   });
-  saltar.addEventListener("click", function () { desbloquear(true); });
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") desbloquear(true);
   });

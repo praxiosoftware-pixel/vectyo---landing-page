@@ -145,11 +145,13 @@
 }
 .chip-servicio i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
 
-/* atribución de los mapas (obligatoria), discreta */
-.mapa .maplibregl-ctrl-attrib { background: rgb(20 14 17 / .6) !important; color: var(--meta); font-size: 10px; border-radius: 12px; }
-.mapa .maplibregl-ctrl-attrib a { color: var(--suave); }
-.mapa .maplibregl-ctrl-attrib-button { filter: invert(1); }
+/* créditos del mapa (obligatorios): plegados en un ⓘ chico; se despliegan al tocarlo */
 .mapa .maplibregl-ctrl-bottom-left { z-index: 3; }
+.mapa .maplibregl-ctrl-attrib.maplibregl-compact { min-height: 24px; padding: 0 24px 0 0; margin: 0 0 12px 12px; background: rgb(20 14 17 / .5) !important; border-radius: 12px; color: var(--meta); font-size: 10px; }
+.mapa .maplibregl-ctrl-attrib.maplibregl-compact-show { padding: 3px 28px 3px 10px; background: rgb(20 14 17 / .85) !important; }
+.mapa .maplibregl-ctrl-attrib a { color: var(--suave); }
+.mapa .maplibregl-ctrl-attrib-button { width: 24px; height: 24px; filter: invert(1); opacity: .35; transition: opacity var(--t); }
+.mapa .maplibregl-ctrl-attrib-button:hover { opacity: .8; }
 .mapa .maplibregl-cooperative-gesture-screen { font-family: var(--fuente); background: rgb(11 7 9 / .55); }
 
 /* ---------- Lista de clientes (debajo del mapa) ---------- */
@@ -173,6 +175,7 @@
   .mapa__controles { top: auto; bottom: 86px; translate: none; right: 12px; }
   .mapa__controles button { width: 38px; height: 38px; }
   .mapa__bajar { left: 12px; translate: none; bottom: 16px; padding: 10px 14px; }
+  .mapa .maplibregl-ctrl-attrib.maplibregl-compact { margin-bottom: 66px; } /* el ⓘ queda arriba de "Ver trabajos" */
   body:has(.mapa.is-ficha) .wa-float,
   .mapa.is-ficha .mapa__controles { opacity: 0; pointer-events: none; } /* no tapan la ficha */
   .ficha-mapa { max-width: calc(100vw - 32px) !important; }

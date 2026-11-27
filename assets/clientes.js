@@ -298,7 +298,15 @@
       }
     });
     mapa.touchZoomRotate.disableRotation();
+    /* créditos del mapa: la licencia de OpenStreetMap/OpenFreeMap obliga a mostrarlos.
+       Quedan plegados en un ⓘ discreto y se ven solo si alguien lo toca. */
     mapa.addControl(new ml.AttributionControl({ compact: true }), "bottom-left");
+    var plegarCreditos = function () {
+      var c = contenedor.querySelector(".maplibregl-ctrl-attrib");
+      if (c) c.classList.remove("maplibregl-compact-show");
+    };
+    mapa.once("load", plegarCreditos);
+    mapa.once("idle", plegarCreditos);
 
     mapa.on("load", function () {
       clientes.forEach(crearPin);

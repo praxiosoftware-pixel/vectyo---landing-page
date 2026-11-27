@@ -61,7 +61,19 @@ if (toggle && nav) {
     nav.classList.add("is-open");
     document.body.classList.add("nav-open");
   });
-  nav.querySelectorAll("a").forEach((a) => a.addEventListener("click", cerrar));
+  /* al tocar un link, el panel se cierra suave y recién después cambia la página */
+  nav.querySelectorAll("a").forEach((a) => a.addEventListener("click", (e) => {
+    if (toggle.getAttribute("aria-expanded") !== "true" || e.metaKey || e.ctrlKey || e.shiftKey) return cerrar();
+    const destino = a.href;
+    if (a.getAttribute("aria-current") === "page") { e.preventDefault(); return cerrar(); }
+    e.preventDefault();
+    cerrar();
+    setTimeout(() => { location.href = destino; }, 180);
+  }));
+  /* tocar afuera del panel también lo cierra */
+  document.addEventListener("click", (e) => {
+    if (toggle.getAttribute("aria-expanded") === "true" && !nav.contains(e.target) && !toggle.contains(e.target)) cerrar();
+  });
   document.addEventListener("keydown", (e) => e.key === "Escape" && cerrar());
 }
 
