@@ -18,22 +18,58 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="assets/styles.css">
-<script src="assets/main.js" defer></script>
+<link rel="stylesheet" href="assets/styles.css?v=6ae85d0f">
+<script src="assets/main.js?v=6e7ecc4b" defer></script>
+<link rel="stylesheet" href="assets/intro.css?v=89c7cc02">
+<script>(function(){try{var f=/[?&]intro(=|&|$)/.test(location.search);if(!f&&(sessionStorage.getItem('vectyo-intro')||matchMedia('(prefers-reduced-motion: reduce)').matches))return;document.documentElement.classList.add('intro-on')}catch(e){}})()</script>
+<script src="assets/intro.js?v=86f89d18" defer></script>
 </head>
 <body>
+<div class="intro" data-intro role="dialog" aria-modal="true" aria-label="Bienvenida a Vectyo">
+  <div class="intro__luz" aria-hidden="true"><span class="intro__haz intro__haz--ciruela"></span><span class="intro__haz intro__haz--azul"></span></div>
+  <button class="intro__saltar" type="button">Saltar</button>
+  <div class="intro__escena">
+    <div class="intro__logo">
+      <svg viewBox="0 0 194 125.5" aria-hidden="true">
+        <defs>
+          <linearGradient id="intro-brillo" gradientUnits="userSpaceOnUse" x1="-80" y1="0" x2="0" y2="0">
+            <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+            <stop offset=".5" stop-color="#fff" stop-opacity=".95"/>
+            <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+            <animateTransform attributeName="gradientTransform" type="translate" from="-40 0" to="320 0" dur="1.6s" begin="indefinite" fill="freeze"/>
+          </linearGradient>
+        </defs>
+        <g class="intro__relleno">
+          <path transform="translate(40.5 0)" fill-rule="evenodd" d="M0 0 L40 0 L77 45 L40 90 L0 90 L37 45 Z M51.5 45 L22.72 80 L33.72 80 L62.5 45 L33.72 10 L22.72 10 Z M52 0 L76 0 L113 45 L76 90 L52 90 L89 45 Z"/>
+          <path transform="translate(0 104.5)" fill-rule="evenodd" d="M0 0 L5.2 0 L13 15.6 L20.8 0 L26 0 L15.3 21 L10.7 21 Z M40 0 L59 0 L59 4.5 L44.5 4.5 L44.5 8.25 L56 8.25 L56 12.75 L44.5 12.75 L44.5 16.5 L59 16.5 L59 21 L40 21 Z M93 0 L77.5 0 A5.5 5.5 0 0 0 72 5.5 L72 15.5 A5.5 5.5 0 0 0 77.5 21 L93 21 L93 16.5 L77.5 16.5 A1 1 0 0 1 76.5 15.5 L76.5 5.5 A1 1 0 0 1 77.5 4.5 L93 4.5 Z M105 0 L126 0 L126 4.5 L117.75 4.5 L117.75 21 L113.25 21 L113.25 4.5 L105 4.5 Z M139 0 L144.5 0 L150 8.5 L155.5 0 L161 0 L152.25 13.5 L152.25 21 L147.75 21 L147.75 13.5 Z M178.5 0 L188.5 0 A5.5 5.5 0 0 1 194 5.5 L194 15.5 A5.5 5.5 0 0 1 188.5 21 L178.5 21 A5.5 5.5 0 0 1 173 15.5 L173 5.5 A5.5 5.5 0 0 1 178.5 0 Z M178.5 4.5 A1 1 0 0 0 177.5 5.5 L177.5 15.5 A1 1 0 0 0 178.5 16.5 L188.5 16.5 A1 1 0 0 0 189.5 15.5 L189.5 5.5 A1 1 0 0 0 188.5 4.5 Z"/>
+        </g>
+        <g class="intro__brillo" fill="url(#intro-brillo)">
+          <path transform="translate(40.5 0)" fill-rule="evenodd" d="M0 0 L40 0 L77 45 L40 90 L0 90 L37 45 Z M51.5 45 L22.72 80 L33.72 80 L62.5 45 L33.72 10 L22.72 10 Z M52 0 L76 0 L113 45 L76 90 L52 90 L89 45 Z"/>
+          <path transform="translate(0 104.5)" fill-rule="evenodd" d="M0 0 L5.2 0 L13 15.6 L20.8 0 L26 0 L15.3 21 L10.7 21 Z M40 0 L59 0 L59 4.5 L44.5 4.5 L44.5 8.25 L56 8.25 L56 12.75 L44.5 12.75 L44.5 16.5 L59 16.5 L59 21 L40 21 Z M93 0 L77.5 0 A5.5 5.5 0 0 0 72 5.5 L72 15.5 A5.5 5.5 0 0 0 77.5 21 L93 21 L93 16.5 L77.5 16.5 A1 1 0 0 1 76.5 15.5 L76.5 5.5 A1 1 0 0 1 77.5 4.5 L93 4.5 Z M105 0 L126 0 L126 4.5 L117.75 4.5 L117.75 21 L113.25 21 L113.25 4.5 L105 4.5 Z M139 0 L144.5 0 L150 8.5 L155.5 0 L161 0 L152.25 13.5 L152.25 21 L147.75 21 L147.75 13.5 Z M178.5 0 L188.5 0 A5.5 5.5 0 0 1 194 5.5 L194 15.5 A5.5 5.5 0 0 1 188.5 21 L178.5 21 A5.5 5.5 0 0 1 173 15.5 L173 5.5 A5.5 5.5 0 0 1 178.5 0 Z M178.5 4.5 A1 1 0 0 0 177.5 5.5 L177.5 15.5 A1 1 0 0 0 178.5 16.5 L188.5 16.5 A1 1 0 0 0 189.5 15.5 L189.5 5.5 A1 1 0 0 0 188.5 4.5 Z"/>
+        </g>
+        <g class="intro__trazos"></g>
+      </svg>
+    </div>
+    <div class="intro__slider">
+      <span class="intro__estela" aria-hidden="true"></span>
+      <span class="intro__guia" aria-hidden="true"></span>
+      <span class="intro__texto" aria-hidden="true">Deslizá para entrar</span>
+      <button class="intro__perilla" type="button" aria-label="Entrar a la web de Vectyo"><svg viewBox="0 0 113 90" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M0 0 L40 0 L77 45 L40 90 L0 90 L37 45 Z M51.5 45 L22.72 80 L33.72 80 L62.5 45 L33.72 10 L22.72 10 Z M52 0 L76 0 L113 45 L76 90 L52 90 L89 45 Z"/></svg></button>
+    </div>
+  </div>
+</div>
 <a class="skip" href="#contenido">Ir al contenido</a>
 <header class="header">
-  <div class="container header__inner">
-    <a href="index.html" class="brand" aria-label="Vectyo, ir al inicio"><svg viewBox="0 0 515.6 90" role="img" aria-label="Vectyo"><path fill="currentColor" fill-rule="evenodd" d="M0 0 L40 0 L77 45 L40 90 L0 90 L37 45 Z M51.5 45 L22.72 80 L33.72 80 L62.5 45 L33.72 10 L22.72 10 Z M52 0 L76 0 L113 45 L76 90 L52 90 L89 45 Z"/><path transform="translate(147 25.05) scale(1.9)" fill="currentColor" fill-rule="evenodd" d="M0 0 L5.2 0 L13 15.6 L20.8 0 L26 0 L15.3 21 L10.7 21 Z M40 0 L59 0 L59 4.5 L44.5 4.5 L44.5 8.25 L56 8.25 L56 12.75 L44.5 12.75 L44.5 16.5 L59 16.5 L59 21 L40 21 Z M93 0 L77.5 0 A5.5 5.5 0 0 0 72 5.5 L72 15.5 A5.5 5.5 0 0 0 77.5 21 L93 21 L93 16.5 L77.5 16.5 A1 1 0 0 1 76.5 15.5 L76.5 5.5 A1 1 0 0 1 77.5 4.5 L93 4.5 Z M105 0 L126 0 L126 4.5 L117.75 4.5 L117.75 21 L113.25 21 L113.25 4.5 L105 4.5 Z M139 0 L144.5 0 L150 8.5 L155.5 0 L161 0 L152.25 13.5 L152.25 21 L147.75 21 L147.75 13.5 Z M178.5 0 L188.5 0 A5.5 5.5 0 0 1 194 5.5 L194 15.5 A5.5 5.5 0 0 1 188.5 21 L178.5 21 A5.5 5.5 0 0 1 173 15.5 L173 5.5 A5.5 5.5 0 0 1 178.5 0 Z M178.5 4.5 A1 1 0 0 0 177.5 5.5 L177.5 15.5 A1 1 0 0 0 178.5 16.5 L188.5 16.5 A1 1 0 0 0 189.5 15.5 L189.5 5.5 A1 1 0 0 0 188.5 4.5 Z"/></svg></a>
-    <button class="nav-toggle" aria-expanded="false" aria-controls="nav" aria-label="Abrir menú"><span></span><span></span></button>
+  <a href="index.html" class="brand header__logo" aria-label="Vectyo, ir al inicio"><svg viewBox="0 0 515.6 90" role="img" aria-label="Vectyo"><path fill="currentColor" fill-rule="evenodd" d="M0 0 L40 0 L77 45 L40 90 L0 90 L37 45 Z M51.5 45 L22.72 80 L33.72 80 L62.5 45 L33.72 10 L22.72 10 Z M52 0 L76 0 L113 45 L76 90 L52 90 L89 45 Z"/><path transform="translate(147 25.05) scale(1.9)" fill="currentColor" fill-rule="evenodd" d="M0 0 L5.2 0 L13 15.6 L20.8 0 L26 0 L15.3 21 L10.7 21 Z M40 0 L59 0 L59 4.5 L44.5 4.5 L44.5 8.25 L56 8.25 L56 12.75 L44.5 12.75 L44.5 16.5 L59 16.5 L59 21 L40 21 Z M93 0 L77.5 0 A5.5 5.5 0 0 0 72 5.5 L72 15.5 A5.5 5.5 0 0 0 77.5 21 L93 21 L93 16.5 L77.5 16.5 A1 1 0 0 1 76.5 15.5 L76.5 5.5 A1 1 0 0 1 77.5 4.5 L93 4.5 Z M105 0 L126 0 L126 4.5 L117.75 4.5 L117.75 21 L113.25 21 L113.25 4.5 L105 4.5 Z M139 0 L144.5 0 L150 8.5 L155.5 0 L161 0 L152.25 13.5 L152.25 21 L147.75 21 L147.75 13.5 Z M178.5 0 L188.5 0 A5.5 5.5 0 0 1 194 5.5 L194 15.5 A5.5 5.5 0 0 1 188.5 21 L178.5 21 A5.5 5.5 0 0 1 173 15.5 L173 5.5 A5.5 5.5 0 0 1 178.5 0 Z M178.5 4.5 A1 1 0 0 0 177.5 5.5 L177.5 15.5 A1 1 0 0 0 178.5 16.5 L188.5 16.5 A1 1 0 0 0 189.5 15.5 L189.5 5.5 A1 1 0 0 0 188.5 4.5 Z"/></svg></a>
+  <div class="isla">
     <nav id="nav" class="nav" aria-label="Principal">
-      <a href="trabajos.html">Trabajos</a>
+      <span class="isla__indicador" aria-hidden="true"></span>
+      <a href="trabajos.html">Clientes</a>
       <a href="servicios.html">Servicios</a>
       <a href="nosotros.html">Nosotros</a>
-      <a href="contacto.html">Contacto</a>
-      <a class="btn btn--acento btn--sm" href="auditoria.html">Auditoría gratis</a>
     </nav>
+    <a class="btn btn--acento btn--sm isla__cta" href="auditoria.html">Auditoría gratis</a>
+    <button class="nav-toggle" aria-expanded="false" aria-controls="nav" aria-label="Abrir menú"><span></span><span></span></button>
   </div>
 </header>
 <main id="contenido">

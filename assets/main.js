@@ -65,6 +65,45 @@ if (toggle && nav) {
   document.addEventListener("keydown", (e) => e.key === "Escape" && cerrar());
 }
 
+/* ---------- Nosotros: la línea de la historia se llena al bajar ---------- */
+const historia = document.querySelector("[data-historia]");
+if (historia) {
+  const hitos = [...historia.querySelectorAll(".historia__hito")];
+  let pendiente = false;
+  const pintar = () => {
+    pendiente = false;
+    const caja = historia.getBoundingClientRect();
+    const marca = window.innerHeight * 0.62; /* punto de la pantalla que "lee" la historia */
+    const p = Math.max(0, Math.min(1, (marca - caja.top) / caja.height));
+    historia.style.setProperty("--progreso", p.toFixed(3));
+    hitos.forEach((h) => h.classList.toggle("is-alcanzado", h.getBoundingClientRect().top + 12 < marca));
+  };
+  const pedir = () => { if (!pendiente) { pendiente = true; requestAnimationFrame(pintar); } };
+  window.addEventListener("scroll", pedir, { passive: true });
+  window.addEventListener("resize", pedir);
+  pintar();
+}
+
+/* ---------- Isla: píldora que sigue al link activo o con el mouse ---------- */
+const indicador = document.querySelector(".isla__indicador");
+if (indicador && nav) {
+  const activo = nav.querySelector('a[aria-current="page"]');
+  const mover = (a) => {
+    if (!a) { indicador.classList.remove("is-visible"); return; }
+    indicador.style.width = a.offsetWidth + "px";
+    indicador.style.transform = `translateX(${a.offsetLeft}px)`;
+    indicador.classList.add("is-visible");
+  };
+  nav.querySelectorAll("a").forEach((a) => {
+    a.addEventListener("mouseenter", () => mover(a));
+    a.addEventListener("focus", () => mover(a));
+  });
+  nav.addEventListener("mouseleave", () => mover(activo));
+  const inicial = () => { indicador.style.transition = "none"; mover(activo); indicador.offsetWidth; indicador.style.transition = ""; };
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(inicial); else inicial();
+  window.addEventListener("resize", inicial);
+}
+
 /* ---------- Header con blur al hacer scroll ---------- */
 const header = document.querySelector(".header");
 const onScroll = () => header && header.classList.toggle("is-scrolled", window.scrollY > 8);
