@@ -32,13 +32,29 @@
   var MUNDO = { center: [-62, -16], zoom: movil ? 1.1 : 2 };
 
   var datos = JSON.parse(nodoDatos.textContent);
-  var clientes = (datos.clientes || []).filter(function (c) { return demo || !c.ejemplo; });
-  /* una parada del recorrido por ciudad */
-  var ciudades = [];
-  clientes.forEach(function (c) {
-    var clave = c.ciudad + "|" + c.pais;
-    if (!ciudades.some(function (x) { return x.clave === clave; })) ciudades.push({ clave: clave, ciudad: c.ciudad, pais: c.pais, lat: c.lat, lng: c.lng });
-  });
+  var clientes = [], ciudades = [];
+  function prepararDatos(lista) {
+    clientes = lista.filter(function (c) { return demo || !c.ejemplo; });
+    /* una parada del recorrido por ciudad */
+    ciudades = [];
+    clientes.forEach(function (c) {
+      var clave = c.ciudad + "|" + c.pais;
+      if (!ciudades.some(function (x) { return x.clave === clave; })) ciudades.push({ clave: clave, ciudad: c.ciudad, pais: c.pais, lat: c.lat, lng: c.lng });
+    });
+  }
+  /* Los pines reales se cargan desde el panel de Vectyo (Supabase, vista pública
+     "mapa_publico": solo nombre, ciudad, país, ubicación, servicios y estado).
+     Si no responde, se usan los del archivo (clientes.json). */
+  var PINES = {
+    url: "https://rauekiejjkxgfoyicyhy.supabase.co/rest/v1/mapa_publico?select=negocio,ciudad,pais,lat,lng,servicios,estado",
+    clave: "sb_publishable_8NV1VqnKM6fKALVgSIyCUw_2zN5BGgx"
+  };
+  function pinesDelPanel() {
+    var corte = new Promise(function (_, no) { setTimeout(function () { no(new Error("tiempo")); }, 4000); });
+    var pedido = fetch(PINES.url, { headers: { apikey: PINES.clave }, referrerPolicy: "no-referrer" })
+      .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.json(); });
+    return Promise.race([pedido, corte]);
+  }
 
   var mapa = null, popup = null, activo = null;
 
@@ -332,12 +348,26 @@
     mapa.on("click", function () { if (activo) cerrar(); });
   }
 
-  if (!clientes.length) raiz.querySelector("[data-mapa-vacio]").hidden = false;
-  lista();
+  function arrancar() {
+    if (!clientes.length) raiz.querySelector("[data-mapa-vacio]").hidden = false;
+    lista();
+    if (!hayWebGL()) { raiz.classList.add("is-sin-mapa"); return; }
+    Promise.all([cargarScript(LIB + "maplibre-gl.js"), estiloBase])
+      .then(function (r) { crearMapa(armarEstilo(r[1])); })
+      .catch(function () { raiz.classList.add("is-sin-mapa"); });
+  }
 
-  if (!hayWebGL()) { raiz.classList.add("is-sin-mapa"); return; }
-  cargarCss(LIB + "maplibre-gl.css");
-  Promise.all([cargarScript(LIB + "maplibre-gl.js"), fetch(ESTILO_BASE).then(function (r) { return r.json(); })])
-    .then(function (r) { crearMapa(armarEstilo(r[1])); })
-    .catch(function () { raiz.classList.add("is-sin-mapa"); });
+  /* El mapa y su estilo se piden mientras llegan los pines */
+  var deArchivo = datos.clientes || [];
+  if (hayWebGL()) cargarCss(LIB + "maplibre-gl.css");
+  var estiloBase = hayWebGL() ? fetch(ESTILO_BASE).then(function (r) { return r.json(); }) : null;
+  if (estiloBase) estiloBase.catch(function () {});
+  pinesDelPanel()
+    .then(function (filas) {
+      var reales = (filas || []).filter(function (c) { return c && c.negocio && isFinite(c.lat) && isFinite(c.lng); })
+        .map(function (c) { return { negocio: c.negocio, ciudad: c.ciudad, pais: c.pais || "", lat: c.lat, lng: c.lng, servicios: c.servicios || [], estado: c.estado || "en marcha", ejemplo: false }; });
+      /* los de ejemplo del archivo siguen disponibles con ?demo */
+      prepararDatos(reales.concat(deArchivo.filter(function (c) { return c.ejemplo; })));
+    }, function () { prepararDatos(deArchivo); })
+    .then(arrancar);
 })();

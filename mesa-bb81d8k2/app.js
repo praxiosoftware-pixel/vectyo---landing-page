@@ -440,7 +440,8 @@ function formCliente(c = {}) {
     campo('Canal preferido', inp('canal_preferido', c.canal_preferido, { placeholder: 'WhatsApp, mail, llamada…' })),
     campo('Horarios', inp('horarios', c.horarios, { placeholder: 'Cuándo conviene escribirle' })),
     campo('Cosas a evitar', area('evitar', c.evitar), 'entera'),
-    campo('Notas', area('notas', c.notas), 'entera'));
+    campo('Notas', area('notas', c.notas), 'entera'),
+    seccionMapa(c));
   return dialogo({
     titulo: c.id ? 'Editar cliente' : 'Nuevo cliente',
     cuerpo,
@@ -450,12 +451,68 @@ function formCliente(c = {}) {
         const v = String(fd.get(k) ?? '').trim();
         fila[k] = v || null;
       }
+      Object.assign(fila, leerMapa(fd));
       if (c.id) fila.id = c.id;
       const r = await datos.guardarCliente(fila);
       aviso('Cliente guardado.');
       return r;
     },
   });
+}
+
+// ---------- Pin en el mapa de la web (página Clientes) ----------
+const SERV_MAPA = [['webs', 'Webs'], ['ia', 'IA y bots'], ['redes', 'Redes'], ['marca', 'Marca']];
+function seccionMapa(c) {
+  const publicar = h('input', { type: 'checkbox', name: 'mapa_publicar', checked: c.mapa_publicar });
+  const ciudad = inp('mapa_ciudad', c.mapa_ciudad || c.ciudad?.replace(/\s*\(.*\)\s*/g, ''), { placeholder: 'Ej: San Luis' });
+  const pais = inp('mapa_pais', c.mapa_pais || 'Argentina', { placeholder: 'Ej: Argentina' });
+  const lat = h('input', { type: 'hidden', name: 'mapa_lat', value: c.mapa_lat ?? '' });
+  const lng = h('input', { type: 'hidden', name: 'mapa_lng', value: c.mapa_lng ?? '' });
+  const estadoUbic = h('p', { class: 'chico', text: c.mapa_lat != null ? `Ubicación cargada (${Number(c.mapa_lat).toFixed(2)}, ${Number(c.mapa_lng).toFixed(2)}).` : 'Tocá "Buscar" para ubicar la ciudad en el mapa.' });
+  const buscar = h('button', { type: 'button', class: 'btn sec', onclick: async () => {
+    const q = [ciudad.value.trim(), pais.value.trim()].filter(Boolean).join(', ');
+    if (!ciudad.value.trim()) { estadoUbic.textContent = 'Escribí la ciudad primero.'; return ciudad.focus(); }
+    buscar.disabled = true; estadoUbic.textContent = 'Buscando…';
+    try {
+      const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=es&featureType=city&q=' + encodeURIComponent(q), { referrerPolicy: 'no-referrer' });
+      const [lugar] = await r.json();
+      if (!lugar) { estadoUbic.textContent = 'No encontré esa ciudad. Probá escribiéndola distinto o agregando la provincia.'; return; }
+      lat.value = Number(lugar.lat).toFixed(4); lng.value = Number(lugar.lon).toFixed(4);
+      estadoUbic.textContent = 'Encontrada: ' + lugar.display_name + '.';
+    } catch { estadoUbic.textContent = 'No se pudo buscar. Revisá internet y probá de nuevo.'; }
+    finally { buscar.disabled = false; }
+  } }, 'Buscar');
+  // Si cambia la ciudad, hay que volver a buscarla
+  for (const x of [ciudad, pais]) x.addEventListener('input', () => { lat.value = ''; lng.value = ''; estadoUbic.textContent = 'Tocá "Buscar" para ubicar la ciudad en el mapa.'; });
+  const servs = new Set(c.mapa_servicios || []);
+  const cuerpo = h('div', { class: 'grilla-form entera' },
+    campo('Nombre que se muestra', inp('mapa_nombre', c.mapa_nombre, { placeholder: c.nombre || 'Igual al nombre del negocio' }), 'entera'),
+    campo('Ciudad', ciudad), campo('País', pais),
+    h('div', { class: 'entera', style: null }, buscar, ' ', estadoUbic, lat, lng),
+    h('fieldset', { class: 'entera campo' }, h('legend', { class: 'suave chico', text: 'Servicios que se muestran' }),
+      h('div', { class: 'chips' }, SERV_MAPA.map(([v, t]) => h('label', {}, h('input', { type: 'checkbox', name: 'mapa_servicios', value: v, checked: servs.has(v) }), h('span', { text: t }))))),
+    h('div', { class: 'entera campo' }, h('span', { class: 'suave chico', text: 'Estado' }), segmento('mapa_estado', [['en marcha', 'En marcha'], ['entregado', 'Entregado']], c.mapa_estado || 'en marcha')),
+    h('p', { class: 'chico suave entera', text: 'En la web solo se ve el nombre, la ciudad, el país, los servicios y el estado. Nada más de la ficha.' }));
+  const sincronizar = () => { cuerpo.hidden = !publicar.checked; };
+  publicar.addEventListener('change', sincronizar);
+  sincronizar();
+  return h('div', { class: 'entera bloque-mapa' }, h('h3', { text: 'Mapa de la web' }),
+    h('label', { class: 'check' }, publicar, 'Mostrar en el mapa de la página Clientes'), cuerpo);
+}
+function leerMapa(fd) {
+  const publicar = fd.get('mapa_publicar') === 'on';
+  const num = (k) => (String(fd.get(k) ?? '').trim() === '' ? null : Number(fd.get(k)));
+  const fila = {
+    mapa_publicar: publicar,
+    mapa_nombre: String(fd.get('mapa_nombre') ?? '').trim() || null,
+    mapa_ciudad: String(fd.get('mapa_ciudad') ?? '').trim() || null,
+    mapa_pais: String(fd.get('mapa_pais') ?? '').trim() || null,
+    mapa_lat: num('mapa_lat'), mapa_lng: num('mapa_lng'),
+    mapa_servicios: fd.getAll('mapa_servicios'),
+    mapa_estado: fd.get('mapa_estado') || 'en marcha',
+  };
+  if (publicar && (fila.mapa_lat == null || !fila.mapa_ciudad)) throw new Error('Para mostrarlo en el mapa, escribí la ciudad y tocá "Buscar".');
+  return fila;
 }
 
 async function vistaFicha(id) {
@@ -519,7 +576,8 @@ async function vistaFicha(id) {
       fila('Contacto', c.contacto), fila('WhatsApp', c.whatsapp), fila('Mail', c.email), fila('Instagram', c.instagram), fila('Web', c.web),
       fila('Rubro', c.rubro), fila('Ciudad', c.ciudad), fila('Nos conoció por', c.origen), fila('Responsable', c.responsable),
       fila('Próxima acción', c.proxima_accion ? [c.proxima_accion, c.fecha_proxima_accion ? h('span', { class: vencida ? 'debe' : 'suave', text: ' · ' + fechaLinda(c.fecha_proxima_accion) + (vencida ? ' (vencida)' : '') }) : null] : null),
-      fila('Alta', fechaLinda(c.creado_en))));
+      fila('Alta', fechaLinda(c.creado_en)),
+      fila('Mapa de la web', c.mapa_publicar ? `Se muestra en ${[c.mapa_ciudad, c.mapa_pais].filter(Boolean).join(', ')}` : 'No se muestra')));
 
   // Tratos económicos
   const ingresos = movs.filter((m) => m.tipo === 'ingreso');
