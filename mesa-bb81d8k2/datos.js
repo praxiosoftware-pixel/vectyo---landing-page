@@ -65,6 +65,7 @@ function crearSupabase() {
   }
 
   async function sel(q) { const { data, error } = await q; falla(error); return data; }
+  async function miId() { const { data } = await sb.auth.getSession(); return data.session?.user?.id; }
 
   async function guardarEn(tabla, fila) {
     const { id, ...resto } = fila;
@@ -113,7 +114,7 @@ function crearSupabase() {
       const { error } = await sb.auth.mfa.challengeAndVerify({ factorId, code });
       falla(error);
     },
-    async cerrarSesion() { await sb.auth.signOut(); urlCache.clear(); },
+    async cerrarSesion() { await sb.removeAllChannels(); await sb.auth.signOut(); urlCache.clear(); },
     alCambiarSesion(fn) { sb.auth.onAuthStateChange((ev) => fn(ev)); },
     async perfil() {
       const { data: u } = await sb.auth.getUser();
@@ -177,6 +178,44 @@ function crearSupabase() {
     reabrirTarea: (id) => guardarEn('tareas', { id, estado: 'pendiente' }),
     borrarTarea: (id) => sel(sb.from('tareas').delete().eq('id', id)),
     listarFeed: (cid) => sel(sb.from('feed').select('*').eq('cliente_id', cid).order('creado_en', { ascending: false }).limit(60)),
+
+    // Red: directorio, amigos por código y mensajes (solo entre amigos; lo hace cumplir la base).
+    listarRed: () => sel(sb.from('red_perfiles').select('*').order('nombre')),
+    async miCodigoAmigo() { const { data, error } = await sb.rpc('mi_codigo_amigo'); falla(error); return data; },
+    async renovarCodigoAmigo() { const { data, error } = await sb.rpc('renovar_codigo_amigo'); falla(error); return data; },
+    async perfilPorCodigo(cod) { const { data, error } = await sb.rpc('perfil_por_codigo', { cod }); falla(error); return data; },
+    async enviarSolicitud(cod) { const { data, error } = await sb.rpc('enviar_solicitud', { cod }); falla(error); return data; },
+    async responderSolicitud(sid, aceptar) { const { error } = await sb.rpc('responder_solicitud', { sid, aceptar }); falla(error); },
+    listarAmistades: () => sel(sb.from('amistades').select('*')),
+    eliminarAmistad: (id) => sel(sb.from('amistades').delete().eq('id', id)),
+    async listarMensajes(otro) {
+      const me = await miId();
+      const l = await sel(sb.from('mensajes').select('*')
+        .or(`and(de.eq.${me},para.eq.${otro}),and(de.eq.${otro},para.eq.${me})`)
+        .order('creado_en', { ascending: false }).limit(300));
+      return l.reverse();
+    },
+    resumenMensajes: () => sel(sb.from('mensajes').select('id, de, para, texto, creado_en, leido_en').order('creado_en', { ascending: false }).limit(500)),
+    enviarMensaje: (para, texto) => sel(sb.from('mensajes').insert({ para, texto }).select().single()),
+    async marcarLeidos(otro) { await sb.rpc('marcar_leidos', { otro }); },
+    async contarAvisosRed() {
+      const me = await miId();
+      const [m, a] = await Promise.all([
+        sb.from('mensajes').select('id', { count: 'exact', head: true }).eq('para', me).is('leido_en', null),
+        sb.from('amistades').select('id', { count: 'exact', head: true }).eq('para', me).eq('estado', 'pendiente'),
+      ]);
+      return { mensajes: m.count || 0, solicitudes: a.count || 0 };
+    },
+    // Avisos al instante: mensajes que me llegan y cambios en mis amistades.
+    async escucharRed(alCambiar) {
+      const me = await miId();
+      const canal = sb.channel('red-' + me)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensajes', filter: `para=eq.${me}` }, (x) => alCambiar({ tipo: 'mensaje', fila: x.new }))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'amistades', filter: `para=eq.${me}` }, () => alCambiar({ tipo: 'amistad' }))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'amistades', filter: `de=eq.${me}` }, () => alCambiar({ tipo: 'amistad' }))
+        .subscribe();
+      return () => sb.removeChannel(canal);
+    },
     async borrarCliente(c) {
       const arch = await sel(sb.from('archivos').select('path').eq('cliente_id', c.id));
       if (arch.length) await sb.storage.from('archivos').remove(arch.map((a) => a.path));
@@ -270,9 +309,11 @@ function crearDemo() {
   Object.assign(c4, { tipo: 'personal', dueno_id: 'demo-juan' });
   db.clientes.push(c1, c2, c3, c4);
   const perfilesDemo = [
-    { id: LU, nombre: 'Luciano (demo)', usuario: 'luciano', email: 'luciano@vectyo.com', rol: 'admin', foto_path: null },
-    { id: 'demo-juan', nombre: 'Juan (demo)', usuario: 'juanchi', email: 'juanchi@vectyo.com', rol: 'usuario', foto_path: null },
-    { id: 'demo-marta', nombre: 'Marta Prueba (demo)', usuario: 'marta', email: 'marta@ejemplo.com', rol: 'usuario', foto_path: null },
+    { id: LU, nombre: 'Luciano (demo)', usuario: 'luciano', email: 'luciano@vectyo.com', rol: 'admin', foto_path: null, codigo: 'K7QH-3MXP', descripcion: 'Fundador de Vectyo. Webs, IA y marca para negocios de San Luis.', edad: 27, instagram: '@vectyo', web: 'vectyo.com', whatsapp: '2664639451' },
+    { id: 'demo-juan', nombre: 'Juan (demo)', usuario: 'juanchi', email: 'juanchi@vectyo.com', rol: 'usuario', foto_path: null, codigo: 'JUAN-7RTE', descripcion: 'Ventas y redes en Vectyo. Si tenés un negocio, hablemos.', edad: 26, instagram: '@juanchi.demo', whatsapp: '2660000002' },
+    { id: 'demo-marta', nombre: 'Marta Prueba (demo)', usuario: 'marta', email: 'marta@ejemplo.com', rol: 'usuario', foto_path: null, codigo: 'MRTA-8KQW', descripcion: 'Fotografía de producto para tiendas online.', edad: null, instagram: '@marta.foto', tiktok: '@marta.foto' },
+    { id: 'demo-sofi', nombre: 'Sofía Prueba (demo)', usuario: 'sofi.ux', email: 'sofi@ejemplo.com', rol: 'usuario', foto_path: null, codigo: 'SOFI-5HNB', descripcion: 'Diseño UX/UI. Prototipos en Figma en 48 h.', edad: 31, linkedin: 'sofia-prueba', web: 'sofi.design' },
+    { id: 'demo-tomas', nombre: 'Tomás Prueba (demo)', usuario: 'tomas.dev', email: 'tomas@ejemplo.com', rol: 'usuario', foto_path: null, codigo: 'TMAS-9WXE', descripcion: 'Automatizaciones con IA y bots de WhatsApp.', edad: 24, x: '@tomasdev', instagram: '@tomas.dev' },
   ];
   db.miembros = [
     { cliente_id: c2.id, usuario_id: LU, rol: 'dueno', creado_en: new Date().toISOString() },
@@ -304,6 +345,19 @@ function crearDemo() {
   tarea('Preparar la factura de la seña', 1, LU, { vence: new Date(Date.now() - 864e5).toISOString().slice(0, 10) });
   tarea('Definir colores del panel del estudio', 3, null);
   db.feed.push({ id: uid(), cliente_id: c2.id, tipo: 'integrante_entro', autor: LU, otro: 'demo-juan', creado_en: haceDias(10) });
+  // Red de prueba: Juan es amigo, Marta te mandó solicitud, a Sofía le mandaste vos, Tomás es un extraño.
+  db.amistades = [
+    { id: uid(), de: LU, para: 'demo-juan', estado: 'aceptada', creado_en: haceDias(20) },
+    { id: uid(), de: 'demo-marta', para: LU, estado: 'pendiente', creado_en: haceDias(1) },
+    { id: uid(), de: LU, para: 'demo-sofi', estado: 'pendiente', creado_en: haceDias(2) },
+  ];
+  db.mensajes = [
+    { id: uid(), de: LU, para: 'demo-juan', texto: '¿Pudiste llamar a Pablo del estudio?', creado_en: haceDias(1, 10), leido_en: haceDias(1, 10) },
+    { id: uid(), de: 'demo-juan', para: LU, texto: 'Sí, le encantó la propuesta. Mañana manda la seña.', creado_en: haceDias(1, 12), leido_en: haceDias(1, 13) },
+    { id: uid(), de: 'demo-juan', para: LU, texto: 'Te dejé una tarea nueva en el compartido 👀', creado_en: new Date(Date.now() - 20 * 60000).toISOString(), leido_en: null },
+  ];
+  let oyenteRed = null;
+  const amigosDemo = (a, b) => db.amistades.some((x) => x.estado === 'aceptada' && ((x.de === a && x.para === b) || (x.de === b && x.para === a)));
   const alFeed = (cid, fila) => { if (db.clientes.find((c) => c.id === cid)?.tipo === 'compartido') db.feed.push({ id: uid(), cliente_id: cid, creado_en: new Date().toISOString(), ...fila }); };
   const integrantes = (cid) => db.miembros.filter((m) => m.cliente_id === cid);
   const puedeVer = (c) => !!c && (yo.rol === 'admin' || c.dueno_id === yo.id || (c.tipo === 'compartido' && integrantes(c.id).some((m) => m.usuario_id === yo.id)));
@@ -403,6 +457,7 @@ function crearDemo() {
       if (!b) throw new Error('Escribí el @usuario o el mail.');
       const p = otrosPerfiles().find((x) => (b.indexOf('@') > 0 ? x.email === b : x.usuario === b.replace(/^@/, '')));
       if (!p) throw new Error('No encontramos ninguna cuenta con ese @usuario o mail.');
+      if (yo.rol !== 'admin' && !amigosDemo(yo.id, p.id)) throw new Error('Solo podés sumar a tus amigos de la Red. Pedile su código de amigo primero.');
       if (integrantes(cid).some((m) => m.usuario_id === p.id)) throw new Error('Esa persona ya es integrante.');
       db.miembros.push({ cliente_id: cid, usuario_id: p.id, rol: 'integrante', creado_en: new Date().toISOString() });
       alFeed(cid, { tipo: 'integrante_entro', autor: yo.id, otro: p.id });
@@ -459,6 +514,50 @@ function crearDemo() {
       db.tareas = db.tareas.filter((x) => x !== t);
       return espera(null);
     },
+    listarRed: () => espera([yo, ...otrosPerfiles()].map((p) => ({ ...p, edad: p.id === yo.id ? null : p.edad, email: undefined, codigo: undefined })).sort((a, b) => a.nombre.localeCompare(b.nombre))),
+    async miCodigoAmigo() { const p = perfilesDemo.find((x) => x.id === yo.id); return p ? p.codigo : (yo.codigo ||= 'VYTO-4DMZ'); },
+    async renovarCodigoAmigo() { const c = 'NEW' + Math.floor(Math.random() * 9) + '-QZ7P'; const p = perfilesDemo.find((x) => x.id === yo.id); if (p) p.codigo = c; else yo.codigo = c; return c; },
+    async perfilPorCodigo(cod) {
+      const p = perfilesDemo.find((x) => x.codigo === String(cod || '').trim().toUpperCase());
+      if (!p) throw new Error('Ese código de amigo no existe. Revisalo o pedile uno nuevo.');
+      return { id: p.id, nombre: p.nombre, usuario: p.usuario, foto_path: p.foto_path, descripcion: p.descripcion };
+    },
+    async enviarSolicitud(cod) {
+      const p = await this.perfilPorCodigo(cod);
+      if (p.id === yo.id) throw new Error('Ese es tu propio código.');
+      const ya = db.amistades.find((x) => (x.de === yo.id && x.para === p.id) || (x.de === p.id && x.para === yo.id));
+      if (ya?.estado === 'aceptada') throw new Error('Ya son amigos.');
+      if (ya && ya.de === yo.id) throw new Error('Ya le mandaste una solicitud. Falta que la acepte.');
+      if (ya) { ya.estado = 'aceptada'; return 'aceptada'; }
+      db.amistades.push({ id: uid(), de: yo.id, para: p.id, estado: 'pendiente', creado_en: new Date().toISOString() });
+      return 'enviada';
+    },
+    async responderSolicitud(sid, aceptar) {
+      const a = db.amistades.find((x) => x.id === sid && x.para === yo.id && x.estado === 'pendiente');
+      if (!a) throw new Error('Esa solicitud ya no está.');
+      if (aceptar) a.estado = 'aceptada'; else db.amistades = db.amistades.filter((x) => x !== a);
+    },
+    listarAmistades: () => espera(db.amistades.filter((x) => x.de === yo.id || x.para === yo.id)),
+    async eliminarAmistad(id) { db.amistades = db.amistades.filter((x) => !(x.id === id && (x.de === yo.id || x.para === yo.id))); },
+    listarMensajes: (otro) => espera(db.mensajes.filter((m) => (m.de === yo.id && m.para === otro) || (m.de === otro && m.para === yo.id)).sort((a, b) => a.creado_en.localeCompare(b.creado_en))),
+    resumenMensajes: () => espera(db.mensajes.filter((m) => m.de === yo.id || m.para === yo.id).sort((a, b) => b.creado_en.localeCompare(a.creado_en))),
+    async enviarMensaje(para, texto) {
+      if (!amigosDemo(yo.id, para)) throw new Error('No tenés permiso para hacer esto.');
+      const m = { id: uid(), de: yo.id, para, texto: texto.trim(), creado_en: new Date().toISOString(), leido_en: null };
+      db.mensajes.push(m);
+      // En el demo, el amigo contesta solo a los 2 segundos (para probar el tiempo real).
+      setTimeout(() => {
+        const r = { id: uid(), de: para, para: yo.id, texto: '¡Dale! Lo veo y te aviso 👍', creado_en: new Date().toISOString(), leido_en: null };
+        db.mensajes.push(r);
+        oyenteRed?.({ tipo: 'mensaje', fila: structuredClone(r) });
+      }, 2000);
+      return espera(m);
+    },
+    async marcarLeidos(otro) { for (const m of db.mensajes) if (m.para === yo.id && m.de === otro && !m.leido_en) m.leido_en = new Date().toISOString(); },
+    async contarAvisosRed() {
+      return { mensajes: db.mensajes.filter((m) => m.para === yo.id && !m.leido_en).length, solicitudes: db.amistades.filter((x) => x.para === yo.id && x.estado === 'pendiente').length };
+    },
+    async escucharRed(fn) { oyenteRed = fn; return () => { oyenteRed = null; }; },
     listarFeed: (cid) => espera(puedeVerId(cid) ? db.feed.filter((f) => f.cliente_id === cid).sort((a, b) => b.creado_en.localeCompare(a.creado_en)) : []),
     async subirFoto(c, archivo) { const p = uid(); fotos.set(p, URL.createObjectURL(archivo)); await guardar('clientes', { id: c.id, foto_path: p }); return p; },
     urlFoto: async (p) => fotos.get(p) || null,

@@ -92,6 +92,11 @@ const ICONOS = {
   perfil: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z|M4.5 20.5c1-3.8 4-5.8 7.5-5.8s6.5 2 7.5 5.8',
   candado: 'M6 11h12v10H6z|M8.5 11V8a3.5 3.5 0 0 1 7 0v3',
   check: 'M5 12.5l4.5 4.5L19 7',
+  red: 'M12 7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z|M5.5 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z|M18.5 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z|M10.8 7.2 6.7 16.2|M13.2 7.2l4.1 9|M8 18.5h8',
+  mensaje: 'M4 5h16v11H9l-5 4z|M8 9.5h8|M8 12.5h5',
+  enviar: 'M4 12 20 4l-6 16-2.5-6.5z|M11.5 13.5 20 4',
+  copiar: 'M9 9h11v11H9z|M5 15H4V4h11v1',
+  usuarioMas: 'M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z|M3 20c.8-3.6 3.6-5.6 7-5.6 1.4 0 2.7.3 3.8 1|M19 14v6|M16 17h6',
   imagen: 'M3 5h18v14H3z|M3 16l5-5 4 4 3-3 6 6|M15.5 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z',
 };
 function icono(nombre) {
@@ -218,6 +223,9 @@ async function iniciar() {
   if (!datos) return pantallaSinConfigurar();
   // Al volver del mail de confirmación, Supabase deja datos en la dirección: se borran.
   if (/access_token|error_description|type=signup/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
+  // Link de amigo (#/amigo/CODIGO): se recuerda para después de entrar o de armar el perfil.
+  const codLink = location.hash.match(/^#\/amigo\/([^/?#]+)/)?.[1];
+  if (codLink) sessionStorage.setItem('vy-amigo', decodeURIComponent(codLink));
   try {
     const ses = await datos.sesion();
     if (!ses) return pantallaLogin();
@@ -234,8 +242,7 @@ async function iniciar() {
     if (!sessionStorage.getItem('vy-ingreso')) { sessionStorage.setItem('vy-ingreso', '1'); datos.registrarIngreso().catch(() => {}); }
     vigilarInactividad();
     if (!yo.perfil_completo) return pantallaBienvenida();
-    armarMarco();
-    ruta();
+    entrarAlPanel();
   } catch (e) {
     console.error(e);
     pantallaLogin(e.message);
@@ -350,6 +357,8 @@ function pantallaSinPermiso() {
 }
 
 async function salir(msg) {
+  try { dejarDeEscuchar?.(); } catch { /* nada */ }
+  dejarDeEscuchar = null; chatAbierto = null;
   try { await datos.cerrarSesion(); } catch { /* igual salimos */ }
   sessionStorage.clear();
   localStorage.removeItem('vy-ultimo');
@@ -384,13 +393,23 @@ let $main;
 function secciones() {
   const l = [['#/clientes', 'Clientes', 'clientes'], ['#/finanzas', 'Finanzas', 'finanzas']];
   if (esAdmin()) l.push(['#/mapa', 'Mapa', 'mapa'], ['#/registro', 'Registro', 'registro']);
-  l.push(['#/perfil', 'Perfil', 'perfil']);
+  l.push(['#/red', 'Red', 'red'], ['#/perfil', 'Perfil', 'perfil']);
   return l;
+}
+// Entra al panel ya armado. Si llegó con un link de amigo, va directo a esa solicitud.
+function entrarAlPanel(destino) {
+  armarMarco();
+  escucharRed();
+  const cod = sessionStorage.getItem('vy-amigo');
+  const nuevo = cod ? '#/amigo/' + encodeURIComponent(cod) : destino;
+  if (nuevo && location.hash !== nuevo) location.hash = nuevo; // el cambio de dirección dispara ruta()
+  else ruta();
 }
 function armarMarco() {
   const links = secciones();
   const nav = h('nav', { class: 'nav', 'aria-label': 'Secciones' }, links.map(([href, t, ic]) => h('a', { href }, icono(ic), t)));
-  const tabbar = h('nav', { class: 'tabbar', 'aria-label': 'Secciones' }, links.map(([href, t, ic]) => h('a', { href }, icono(ic), t)));
+  const enTabbar = links.length > 5 ? links.filter(([href]) => href !== '#/perfil') : links;
+  const tabbar = h('nav', { class: 'tabbar', 'aria-label': 'Secciones' }, enTabbar.map(([href, t, ic]) => h('a', { href }, icono(ic), t)));
   $main = h('main', { id: 'contenido' });
   poner($app, 
     h('header', { class: 'barra' },
@@ -403,11 +422,13 @@ function armarMarco() {
     $main,
     tabbar,
     h('button', { class: 'fab', 'aria-label': 'Cargar algo nuevo', title: 'Cargar algo nuevo', onclick: hojaNuevo }, icono('mas')));
+  actualizarAvisosRed();
 }
 function marcarNav() {
   let actual = location.hash.split('?')[0].split('/')[1] || 'clientes';
   if (actual === 'cliente') actual = 'clientes';
   if (actual === 'plata' || actual === 'analytics') actual = 'finanzas';
+  if (actual === 'persona' || actual === 'amigo') actual = 'red';
   document.querySelectorAll('.nav a, .tabbar a').forEach((a) => {
     if (a.getAttribute('href') === '#/' + actual) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
@@ -416,8 +437,10 @@ function marcarNav() {
 async function ruta() {
   if (!yo || !$main) return;
   if (typeof mapaPanel !== 'undefined' && mapaPanel) { try { mapaPanel.remove(); } catch { /* nada */ } mapaPanel = null; }
-  const [, seccionCruda, id] = location.hash.split('?')[0].split('/');
+  const [, seccionCruda, id, id2] = location.hash.split('?')[0].split('/');
   const seccion = seccionCruda || 'clientes';
+  chatAbierto = null;
+  document.body.dataset.vista = seccion === 'red' && id === 'chat' ? 'chat' : seccion;
   marcarNav();
   poner($main, h('p', { class: 'cargando', text: 'Cargando…' }));
   try {
@@ -426,6 +449,10 @@ async function ruta() {
     else if (seccion === 'mapa' && esAdmin()) await vistaMapa();
     else if (seccion === 'registro' && esAdmin()) await vistaRegistro();
     else if (seccion === 'perfil') await vistaPerfil();
+    else if (seccion === 'red' && id === 'chat' && id2) await vistaChat(decodeURIComponent(id2));
+    else if (seccion === 'red') await vistaRed();
+    else if (seccion === 'persona' && id) await vistaPersona(decodeURIComponent(id));
+    else if (seccion === 'amigo' && id) await vistaCodigoAmigo(decodeURIComponent(id));
     else await vistaClientes();
   } catch (e) {
     console.error(e);
@@ -578,7 +605,7 @@ function pantallaBienvenida(paso = 1) {
   const error = h('p', { class: 'error' });
   const progreso = h('div', { class: 'pasos', 'aria-hidden': 'true' }, Array.from({ length: TOTAL }, (_, i) => h('span', { class: i < paso ? 'hecho' : '' })));
   const ir = (n) => pantallaBienvenida(n);
-  const terminar = () => { armarMarco(); location.hash = '#/perfil'; ruta(); };
+  const terminar = () => entrarAlPanel('#/perfil');
   let titulo, texto, cuerpo, opcional = false;
   if (paso === 1) {
     titulo = 'Armemos tu perfil';
@@ -703,8 +730,306 @@ async function vistaPerfil() {
           redes.length ? h('div', { class: 'enlaces' }, redes) : h('p', { class: 'chico suave', text: 'Sin redes cargadas.' })))),
     panelEstilo(),
     h('section', { class: 'panel' }, h('h2', {}, icono('candado'), 'Quién ve tu perfil'),
-      h('p', { class: 'suave', text: 'Tu perfil lo ven las personas con las que compartas un cliente y el administrador del panel. No es público ni aparece en la web.' })),
+      h('p', { class: 'suave', text: 'Tu perfil (foto, banner, nombre, @usuario, descripción, tu edad si la mostrás y tus redes) lo ven todas las cuentas del panel en la Red. No es público ni aparece en la web. Tu fecha de nacimiento, tu mail y tu foto de fondo no los ve nadie. Escribirte solo pueden tus amigos.' })),
     null);
+}
+
+// ------------------------------------------------------------------
+// Red: las personas que trabajan en Vectyo, amigos por código y chat
+// ------------------------------------------------------------------
+// Todos ven el perfil de todos. Para ser amigos hace falta el código de la otra
+// persona y que acepte. Mensajes, solo entre amigos (la base bloquea el resto).
+const linkAmigo = (cod) => location.origin + location.pathname + '#/amigo/' + encodeURIComponent(cod);
+const nombreRol = (r) => (r === 'admin' ? 'Fundador de Vectyo' : 'Creador en Vectyo');
+// Estado de la relación con cada persona: amigo, enviada (pedí yo), recibida (me pidió).
+function relaciones(amistades) {
+  const m = new Map();
+  for (const a of amistades) {
+    const otro = a.de === yo.id ? a.para : a.de;
+    m.set(otro, { id: a.id, estado: a.estado === 'aceptada' ? 'amigo' : a.de === yo.id ? 'enviada' : 'recibida', desde: a.respondida_en || a.creado_en });
+  }
+  return m;
+}
+async function copiar(texto, ok) {
+  try { await navigator.clipboard.writeText(texto); aviso(ok); }
+  catch { await dialogo({ titulo: 'Copialo de acá', cuerpo: inp('copiar', texto, { readonly: true, onfocus: (e) => e.target.select() }), textoGuardar: 'Listo', alGuardar: async () => true }); }
+}
+function enlacesRedes(p) {
+  return REDES.map(([k, t, , url]) => { const u = url(p[k]); return u ? h('a', { class: 'enlace', href: u, target: '_blank', rel: 'noopener noreferrer', text: t }) : null; }).filter(Boolean);
+}
+async function responder(rel, aceptar, nombre) {
+  await intentar(() => datos.responderSolicitud(rel.id, aceptar), aceptar ? `Ahora sos amigo de ${nombre}.` : 'Solicitud rechazada.').catch(() => {});
+  actualizarAvisosRed(); ruta();
+}
+async function dejarAmistad(rel, nombre, texto) {
+  if (!await confirmar(texto === 'cancelar' ? '¿Cancelar la solicitud?' : `¿Dejar de ser amigo de ${nombre}?`,
+    texto === 'cancelar' ? `${nombre} ya no la va a ver.` : 'Ya no se van a poder escribir. Los mensajes viejos quedan. Para volver a ser amigos, hace falta su código otra vez.',
+    texto === 'cancelar' ? 'Sí, cancelar' : 'Sí, dejar de ser amigos')) return;
+  await intentar(() => datos.eliminarAmistad(rel.id), texto === 'cancelar' ? 'Solicitud cancelada.' : 'Ya no son amigos.').catch(() => {});
+  actualizarAvisosRed(); ruta();
+}
+// Botones según la relación (tarjeta, perfil y solicitudes)
+function accionesRelacion(p, rel, { grande = false } = {}) {
+  const t = grande ? '' : ' mini';
+  if (p.id === yo.id) return [h('a', { class: 'btn sec' + t, href: '#/perfil' }, icono('perfil'), 'Es tu perfil')];
+  if (rel?.estado === 'amigo') return [
+    h('a', { class: 'btn' + t, href: '#/red/chat/' + encodeURIComponent(p.id) }, icono('mensaje'), 'Mensaje'),
+    grande ? h('button', { class: 'btn peligro' + t, onclick: () => dejarAmistad(rel, p.nombre) }, 'Dejar de ser amigos') : null];
+  if (rel?.estado === 'recibida') return [
+    h('button', { class: 'btn' + t, onclick: () => responder(rel, true, p.nombre) }, icono('check'), 'Aceptar'),
+    h('button', { class: 'btn sec' + t, onclick: () => responder(rel, false, p.nombre) }, 'Rechazar')];
+  if (rel?.estado === 'enviada') return [
+    h('span', { class: 'chip', text: 'Solicitud enviada' }),
+    grande ? h('button', { class: 'btn sec' + t, onclick: () => dejarAmistad(rel, p.nombre, 'cancelar') }, 'Cancelar solicitud') : null];
+  return [h('span', { class: 'chico suave', text: 'Para ser amigos, pedile su código.' })];
+}
+
+function tarjetaPersona(p, rel) {
+  const estado = { amigo: 'Amigo', recibida: 'Te pidió amistad', enviada: 'Solicitud enviada' }[rel?.estado];
+  return h('article', { class: 'persona vidrio' },
+    h('a', { class: 'persona-cab', href: '#/persona/' + encodeURIComponent(p.id), 'aria-label': 'Ver el perfil de ' + p.nombre },
+      bannerPerfil(p), avatarPerfil(p)),
+    h('div', { class: 'persona-cuerpo' },
+      h('h3', {}, h('a', { href: '#/persona/' + encodeURIComponent(p.id), text: p.nombre + (p.id === yo.id ? ' (vos)' : '') })),
+      h('p', { class: 'chico suave', text: [p.usuario ? '@' + p.usuario : null, p.edad != null ? p.edad + ' años' : null].filter(Boolean).join(' · ') }),
+      h('p', {}, h('span', { class: 'chip tipo' + (p.rol === 'admin' ? ' compartido' : '') , text: nombreRol(p.rol) }), estado ? [' ', h('span', { class: 'chip estado-' + rel.estado, text: estado })] : null),
+      p.descripcion ? h('p', { class: 'chico desc', text: p.descripcion }) : null,
+      h('div', { class: 'enlaces' }, enlacesRedes(p)),
+      h('div', { class: 'acciones-li' }, accionesRelacion(p, rel))));
+}
+
+async function vistaRed() {
+  const params = new URLSearchParams(location.hash.split('?')[1] || '');
+  const [personas, amistades, codigo, msgs] = await Promise.all([
+    datos.listarRed(), datos.listarAmistades(), datos.miCodigoAmigo().catch(() => null), datos.resumenMensajes().catch(() => []),
+  ]);
+  const rel = relaciones(amistades);
+  const porId = new Map(personas.map((p) => [p.id, p]));
+  const otros = personas.filter((p) => p.id !== yo.id);
+  const amigos = otros.filter((p) => rel.get(p.id)?.estado === 'amigo');
+  const recibidas = [...rel.entries()].filter(([, r]) => r.estado === 'recibida');
+  const enviadas = [...rel.entries()].filter(([, r]) => r.estado === 'enviada');
+  let ver = ['personas', 'amigos', 'solicitudes'].includes(params.get('ver')) ? params.get('ver') : (recibidas.length ? 'solicitudes' : 'personas');
+
+  // Mi código y agregar por código
+  const codigoBox = h('strong', { class: 'codigo-amigo', text: codigo || '—' });
+  const campoCod = inp('cod', '', { placeholder: 'Ej: K7QH-3MXP', autocapitalize: 'characters', spellcheck: 'false', maxlength: 9, 'aria-label': 'Código de amigo' });
+  const formCod = h('form', { class: 'sumar-integrante' }, campoCod, h('button', { class: 'btn mini', type: 'submit' }, icono('usuarioMas'), 'Buscar'));
+  formCod.addEventListener('submit', (ev) => { ev.preventDefault(); const c = campoCod.value.trim().toUpperCase(); if (c) location.hash = '#/amigo/' + encodeURIComponent(c); else campoCod.focus(); });
+  const panelCodigo = h('section', { class: 'panel red-codigo' },
+    h('div', { class: 'red-codigo-mio' },
+      h('h2', {}, icono('candado'), 'Tu código de amigo'),
+      codigoBox,
+      h('p', { class: 'chico suave', text: 'Pasáselo solo a quien quieras como amigo. Con él te manda la solicitud y vos la aceptás. Nadie que no sea tu amigo te puede escribir.' }),
+      codigo ? h('div', { class: 'acciones izq' },
+        h('button', { class: 'btn mini', onclick: () => copiar(linkAmigo(codigo), 'Link copiado. Pasalo por WhatsApp o por donde quieras.') }, icono('copiar'), 'Copiar link'),
+        h('button', { class: 'btn sec mini', onclick: () => copiar(codigo, 'Código copiado.') }, 'Copiar código'),
+        h('button', { class: 'btn sec mini', onclick: async () => {
+          if (!await confirmar('¿Cambiar tu código?', 'El código y el link viejos dejan de servir. Tus amigos siguen siendo tus amigos.', 'Sí, cambiarlo')) return;
+          const n = await intentar(() => datos.renovarCodigoAmigo(), 'Código nuevo listo.').catch(() => null);
+          if (n) codigoBox.textContent = n;
+        } }, 'Cambiar código')) : null),
+    h('div', { class: 'red-codigo-otro' },
+      h('h2', {}, icono('usuarioMas'), 'Agregar con un código'),
+      h('p', { class: 'chico suave', text: 'Escribí el código que te pasó la otra persona (o abrí su link).' }),
+      formCod));
+
+  // Pestañas
+  const seg = segmento('ver-red', [['personas', `Personas (${otros.length})`], ['amigos', `Amigos (${amigos.length})`], ['solicitudes', `Solicitudes${recibidas.length ? ' · ' + recibidas.length : ''}`]], ver);
+  const cont = h('div');
+  const buscar = inp('q', '', { type: 'search', placeholder: 'Buscar por nombre, @usuario o lo que hace', 'aria-label': 'Buscar personas' });
+  // Último mensaje y no leídos por amigo
+  const ultimo = new Map(), sinLeer = new Map();
+  for (const m of msgs) {
+    const otro = m.de === yo.id ? m.para : m.de;
+    if (!ultimo.has(otro)) ultimo.set(otro, m);
+    if (m.para === yo.id && !m.leido_en) sinLeer.set(otro, (sinLeer.get(otro) || 0) + 1);
+  }
+  function pintar() {
+    if (ver === 'personas') {
+      const q = buscar.value.trim().toLowerCase();
+      const l = [...otros].filter((p) => !q || [p.nombre, p.usuario, p.descripcion].join(' ').toLowerCase().includes(q));
+      poner(cont, h('div', { class: 'filtros' }, buscar),
+        l.length ? h('div', { class: 'personas' }, l.map((p) => tarjetaPersona(p, rel.get(p.id))))
+          : h('p', { class: 'vacio', text: otros.length ? 'Nadie coincide con esa búsqueda.' : 'Todavía no hay otras personas en la Red.' }));
+    } else if (ver === 'amigos') {
+      const l = [...amigos].sort((a, b) => String(ultimo.get(b.id)?.creado_en || '').localeCompare(String(ultimo.get(a.id)?.creado_en || '')));
+      poner(cont, l.length ? h('ul', { class: 'lista chats' }, l.map((p) => {
+        const u = ultimo.get(p.id), n = sinLeer.get(p.id) || 0;
+        return h('li', {},
+          h('a', { class: 'chat-fila', href: '#/red/chat/' + encodeURIComponent(p.id) },
+            avatarPerfil(p, 'mini'),
+            h('div', { class: 'cuerpo' },
+              h('p', {}, h('strong', { text: p.nombre })),
+              h('p', { class: 'chico suave recorte', text: u ? (u.de === yo.id ? 'Vos: ' : '') + u.texto : 'Todavía no se escribieron. Mandale un mensaje.' })),
+            u ? h('span', { class: 'chico suave', text: haceCuanto(u.creado_en) }) : null,
+            n ? h('span', { class: 'badge', text: String(n), 'aria-label': n + ' sin leer' }) : null));
+      })) : h('p', { class: 'vacio', text: 'Todavía no tenés amigos en la Red. Pasá tu código o pedí el de alguien.' }));
+    } else {
+      const fila = ([id, r]) => {
+        const p = porId.get(id) || { id, nombre: 'Cuenta' };
+        return h('li', {}, avatarPerfil(p, 'mini'),
+          h('div', { class: 'cuerpo' }, h('p', {}, h('a', { href: '#/persona/' + encodeURIComponent(id), text: p.nombre })),
+            h('p', { class: 'chico suave', text: (p.usuario ? '@' + p.usuario + ' · ' : '') + haceCuanto(r.desde) })),
+          h('div', { class: 'acciones-li' }, r.estado === 'recibida'
+            ? [h('button', { class: 'btn mini', onclick: () => responder(r, true, p.nombre) }, icono('check'), 'Aceptar'), h('button', { class: 'btn sec mini', onclick: () => responder(r, false, p.nombre) }, 'Rechazar')]
+            : h('button', { class: 'btn sec mini', onclick: () => dejarAmistad(r, p.nombre, 'cancelar') }, 'Cancelar')));
+      };
+      poner(cont,
+        h('section', { class: 'panel' }, h('h2', { text: `Recibidas (${recibidas.length})` }),
+          recibidas.length ? h('ul', { class: 'lista' }, recibidas.map(fila)) : h('p', { class: 'suave', text: 'No tenés solicitudes nuevas.' })),
+        h('section', { class: 'panel' }, h('h2', { text: `Enviadas (${enviadas.length})` }),
+          enviadas.length ? h('ul', { class: 'lista' }, enviadas.map(fila)) : h('p', { class: 'suave', text: 'No tenés solicitudes esperando respuesta.' })));
+    }
+  }
+  seg.addEventListener('change', (ev) => { ver = ev.target.value; history.replaceState(null, '', '#/red?ver=' + ver); pintar(); });
+  buscar.addEventListener('input', pintar);
+  pintar();
+  poner($main,
+    h('div', { class: 'encabezado' }, h('h1', { text: 'Red' }), h('span', { class: 'suave chico', text: 'Las personas que trabajan en Vectyo' })),
+    panelCodigo,
+    h('div', { class: 'red-pestanas' }, seg),
+    cont);
+}
+
+async function vistaPersona(id) {
+  const [personas, amistades] = await Promise.all([datos.listarRed(), datos.listarAmistades()]);
+  const p = personas.find((x) => x.id === id);
+  if (!p) throw new Error('Esa persona no está en la Red.');
+  const rel = relaciones(amistades).get(id);
+  const redes = enlacesRedes(p);
+  poner($main,
+    h('a', { class: 'volver', href: '#/red' }, icono('volver'), 'Red'),
+    h('section', { class: 'perfil vidrio' },
+      h('div', { class: 'perfil-banner' }, bannerPerfil(p)),
+      h('div', { class: 'perfil-cuerpo' },
+        h('div', { class: 'foto-cambiar' }, avatarPerfil(p, 'grande')),
+        h('div', { class: 'perfil-info' },
+          h('h2', { class: 'perfil-nombre', text: p.nombre }),
+          h('p', { class: 'suave' }, p.usuario ? '@' + p.usuario : '', p.edad != null ? ` · ${p.edad} años` : '', ' ', h('span', { class: 'chip', text: nombreRol(p.rol) })),
+          h('p', { class: 'texto-largo' + (p.descripcion ? '' : ' suave'), text: p.descripcion || 'Sin descripción.' }),
+          redes.length ? h('div', { class: 'enlaces' }, redes) : h('p', { class: 'chico suave', text: 'Sin redes cargadas.' }),
+          h('div', { class: 'acciones izq' }, accionesRelacion(p, rel, { grande: true }))))));
+}
+
+// Link de amigo: #/amigo/CODIGO → ver a quién y mandar la solicitud.
+async function vistaCodigoAmigo(cod) {
+  sessionStorage.removeItem('vy-amigo');
+  const c = String(cod || '').trim().toUpperCase();
+  let p;
+  try { p = await datos.perfilPorCodigo(c); }
+  catch (e) {
+    return poner($main, h('a', { class: 'volver', href: '#/red' }, icono('volver'), 'Red'),
+      h('section', { class: 'panel' }, h('h2', { text: 'Código de amigo' }), h('p', { class: 'error', text: e.message })));
+  }
+  const btn = h('button', { class: 'btn', onclick: async () => {
+    btn.disabled = true;
+    const r = await intentar(() => datos.enviarSolicitud(c)).catch(() => null);
+    btn.disabled = false;
+    if (r) { aviso(r === 'aceptada' ? `¡Ya son amigos con ${p.nombre}!` : `Solicitud enviada a ${p.nombre}.`); actualizarAvisosRed(); location.hash = r === 'aceptada' ? '#/red?ver=amigos' : '#/red?ver=solicitudes'; }
+  } }, icono('usuarioMas'), 'Mandar solicitud de amistad');
+  poner($main,
+    h('a', { class: 'volver', href: '#/red' }, icono('volver'), 'Red'),
+    h('section', { class: 'panel codigo-recibido' },
+      avatarPerfil(p, 'grande'),
+      h('h2', { class: 'perfil-nombre', text: p.nombre }),
+      p.usuario ? h('p', { class: 'suave', text: '@' + p.usuario }) : null,
+      p.descripcion ? h('p', { class: 'texto-largo', text: p.descripcion }) : null,
+      p.id === yo.id ? h('p', { class: 'suave', text: 'Este es tu propio código.' }) : h('div', { class: 'acciones' }, btn),
+      h('p', { class: 'chico suave', text: 'Cuando acepte, van a poder escribirse y sumarse a clientes compartidos.' })));
+}
+
+// ---------- Chat ----------
+let chatAbierto = null; // { id, agregar(fila) } mientras hay una conversación en pantalla
+function burbuja(m) {
+  const mia = m.de === yo.id;
+  const hora = new Date(m.creado_en).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  return h('li', { class: 'burbuja' + (mia ? ' mia' : '') }, h('p', { class: 'texto-largo', text: m.texto }),
+    h('span', { class: 'hora', text: hora + (mia && m.leido_en ? ' · Visto' : '') }));
+}
+function etiquetaDia(iso) {
+  const d = new Date(iso), hoy = new Date();
+  const ayer = new Date(); ayer.setDate(hoy.getDate() - 1);
+  if (d.toDateString() === hoy.toDateString()) return 'Hoy';
+  if (d.toDateString() === ayer.toDateString()) return 'Ayer';
+  return fechaLinda(iso);
+}
+async function vistaChat(id) {
+  const [personas, amistades, mensajes] = await Promise.all([datos.listarRed(), datos.listarAmistades(), datos.listarMensajes(id)]);
+  const p = personas.find((x) => x.id === id) || { id, nombre: 'Cuenta' };
+  const amigo = relaciones(amistades).get(id)?.estado === 'amigo';
+  const lista = h('ol', { class: 'burbujas', 'aria-live': 'polite' });
+  let ultimoDia = '';
+  const agregar = (m) => {
+    const dia = etiquetaDia(m.creado_en);
+    if (dia !== ultimoDia) { lista.append(h('li', { class: 'dia', text: dia })); ultimoDia = dia; }
+    lista.append(burbuja(m));
+    lista.scrollTop = lista.scrollHeight;
+  };
+  if (mensajes.length) mensajes.forEach(agregar);
+  else lista.append(h('li', { class: 'dia', text: amigo ? 'Todavía no se escribieron. Arrancá vos.' : 'Sin mensajes.' }));
+  const texto = area('texto', '', { rows: 1, maxlength: 2000, placeholder: amigo ? 'Escribí un mensaje…' : 'Solo podés escribirle a tus amigos', disabled: !amigo, 'aria-label': 'Mensaje' });
+  const enviar = h('button', { class: 'btn btn-icono', type: 'submit', 'aria-label': 'Enviar', title: 'Enviar', disabled: !amigo }, icono('enviar'));
+  const form = h('form', { class: 'chat-form' }, texto, enviar);
+  const mandar = async () => {
+    const t = texto.value.trim();
+    if (!t) return texto.focus();
+    enviar.disabled = true;
+    try {
+      const m = await datos.enviarMensaje(id, t);
+      if (!mensajes.length && lista.firstChild?.classList.contains('dia') && !ultimoDia) lista.replaceChildren();
+      agregar(m); texto.value = ''; texto.style.height = '';
+    } catch (e) { aviso(e.message, true); }
+    finally { enviar.disabled = false; texto.focus(); }
+  };
+  form.addEventListener('submit', (ev) => { ev.preventDefault(); mandar(); });
+  // Enter manda; Shift+Enter hace un renglón nuevo. El cuadro crece con el texto.
+  texto.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); mandar(); } });
+  texto.addEventListener('input', () => { texto.style.height = ''; texto.style.height = Math.min(texto.scrollHeight, 160) + 'px'; });
+  poner($main,
+    h('section', { class: 'chat vidrio' },
+      h('header', { class: 'chat-cab' },
+        h('a', { class: 'btn sec mini btn-icono', href: '#/red?ver=amigos', 'aria-label': 'Volver a la Red' }, icono('volver')),
+        h('a', { class: 'chat-quien', href: '#/persona/' + encodeURIComponent(id) }, avatarPerfil(p, 'mini'),
+          h('span', {}, h('strong', { text: p.nombre }), h('small', { class: 'suave', text: p.usuario ? '@' + p.usuario : '' })))),
+      lista,
+      amigo ? form : h('p', { class: 'chico suave chat-aviso', text: 'Ya no son amigos: no se pueden escribir. Para volver a hablar, hace falta su código otra vez.' })));
+  lista.scrollTop = lista.scrollHeight;
+  chatAbierto = { id, agregar: (m) => { agregar(m); datos.marcarLeidos(id).then(actualizarAvisosRed).catch(() => {}); } };
+  if (amigo && matchMedia('(min-width: 700px)').matches) texto.focus();
+  await datos.marcarLeidos(id).catch(() => {});
+  actualizarAvisosRed();
+}
+
+// ---------- Avisos de la Red (número en el menú y mensajes en vivo) ----------
+async function actualizarAvisosRed() {
+  try {
+    const { mensajes, solicitudes } = await datos.contarAvisosRed();
+    const n = mensajes + solicitudes;
+    document.querySelectorAll('a[href="#/red"]').forEach((a) => {
+      a.querySelector('.badge')?.remove();
+      if (n) a.append(h('span', { class: 'badge', text: n > 99 ? '99+' : String(n), 'aria-label': `${mensajes} mensajes y ${solicitudes} solicitudes nuevas` }));
+    });
+  } catch { /* sin Red todavía (falta 10-red.sql): no se muestra nada */ }
+}
+let dejarDeEscuchar = null;
+async function escucharRed() {
+  if (dejarDeEscuchar) return;
+  try {
+    dejarDeEscuchar = await datos.escucharRed(async (ev) => {
+      if (ev.tipo === 'mensaje') {
+        if (chatAbierto && ev.fila.de === chatAbierto.id && location.hash.startsWith('#/red/chat/')) chatAbierto.agregar(ev.fila);
+        else {
+          const quien = (await datos.listarRed().catch(() => [])).find((x) => x.id === ev.fila.de);
+          aviso(`💬 ${quien?.nombre || 'Un amigo'}: ${ev.fila.texto.slice(0, 60)}`);
+          actualizarAvisosRed();
+        }
+      } else {
+        actualizarAvisosRed();
+        if (location.hash.startsWith('#/red') && !location.hash.startsWith('#/red/chat/')) ruta();
+      }
+    });
+  } catch { dejarDeEscuchar = null; }
 }
 
 // ------------------------------------------------------------------
@@ -829,6 +1154,13 @@ async function vistaFicha(id) {
   const [integrantes, tareas, feed] = compartido
     ? await Promise.all([datos.listarIntegrantes(id), datos.listarTareas(id), datos.listarFeed(id)])
     : [[], [], []];
+  // Amigos de la Red que se pueden sumar (si soy el dueño o el admin de un compartido).
+  let amigosParaSumar = [];
+  if (compartido && (soyDueno(c) || esAdmin())) {
+    const [red, amistades] = await Promise.all([datos.listarRed().catch(() => []), datos.listarAmistades().catch(() => [])]);
+    const amigosIds = new Set(amistades.filter((a) => a.estado === 'aceptada').map((a) => (a.de === yo.id ? a.para : a.de)));
+    amigosParaSumar = red.filter((x) => amigosIds.has(x.id) && x.usuario && !integrantes.some((m) => m.usuario_id === x.id));
+  }
   const nombreDueno = soyDueno(c) ? yo.nombre : (integrantes.find((x) => x.usuario_id === c.dueno_id)?.nombre
     || (esAdmin() ? (await datos.listarPerfiles()).find((p) => p.id === c.dueno_id)?.nombre : null) || 'otra cuenta');
   const recargar = () => ruta();
@@ -984,12 +1316,12 @@ async function vistaFicha(id) {
       panelAporte(tareas, integrantes),
       h('div', { class: 'ficha-columnas' }, panelTareas(c, integrantes, tareas, recargar), panelFeed(feed, integrantes))) : null,
     h('div', { class: 'ficha-columnas' },
-      h('div', { class: 'columna' }, panelPrivacidad(c, integrantes, nombreDueno, recargar), pPersona, pDatos, pNotas),
+      h('div', { class: 'columna' }, panelPrivacidad(c, integrantes, nombreDueno, recargar, amigosParaSumar), pPersona, pDatos, pNotas),
       h('div', { class: 'columna' }, pPlata, pArchivos, pHistorial)));
 }
 
 // Privacidad del cliente: quién lo ve, integrantes y cambio personal ↔ compartido.
-function panelPrivacidad(c, integrantes, nombreDueno, recargar) {
+function panelPrivacidad(c, integrantes, nombreDueno, recargar, amigosParaSumar = []) {
   const dueno = soyDueno(c);
   const cambiarTipo = async (tipo) => {
     const ok = tipo === 'compartido'
@@ -1019,8 +1351,12 @@ function panelPrivacidad(c, integrantes, nombreDueno, recargar) {
   }));
   let sumar = null;
   if (dueno || esAdmin()) {
-    const quien = inp('buscado', '', { placeholder: '@usuario o mail', autocapitalize: 'none', spellcheck: 'false', 'aria-label': '@usuario o mail de la persona' });
-    sumar = h('form', { class: 'sumar-integrante' }, quien, h('button', { class: 'btn mini', type: 'submit' }, icono('mas'), 'Sumar'));
+    // Solo amigos de la Red. El admin además puede escribir un @usuario o mail.
+    const quien = esAdmin()
+      ? inp('buscado', '', { placeholder: 'Elegí un amigo o escribí @usuario o mail', autocapitalize: 'none', spellcheck: 'false', list: 'amigos-sumar', 'aria-label': 'A quién sumar' })
+      : sel('buscado', [['', amigosParaSumar.length ? 'Elegí a un amigo' : 'No tenés amigos para sumar'], ...amigosParaSumar.map((x) => ['@' + x.usuario, x.nombre + ' (@' + x.usuario + ')'])], '', { 'aria-label': 'Amigo para sumar', disabled: !amigosParaSumar.length });
+    const opciones = esAdmin() ? h('datalist', { id: 'amigos-sumar' }, amigosParaSumar.map((x) => h('option', { value: '@' + x.usuario, text: x.nombre }))) : null;
+    sumar = h('form', { class: 'sumar-integrante' }, quien, opciones, h('button', { class: 'btn mini', type: 'submit' }, icono('mas'), 'Sumar'));
     sumar.addEventListener('submit', async (ev) => {
       ev.preventDefault();
       if (!quien.value.trim()) return quien.focus();
@@ -1031,7 +1367,7 @@ function panelPrivacidad(c, integrantes, nombreDueno, recargar) {
   return h('section', { class: 'panel privacidad' }, h('h2', {}, icono('clientes'), 'Compartido'),
     h('p', { class: 'suave chico', text: 'Lo ven y lo trabajan sus integrantes y el administrador del panel. Nadie más.' }),
     lista, sumar,
-    sumar ? h('p', { class: 'chico suave', text: 'La persona tiene que tener cuenta en el panel. Pedile su @usuario (está en su perfil).' }) : null,
+    sumar ? h('p', { class: 'chico suave' }, 'Solo podés sumar a tus amigos de la ', h('a', { href: '#/red', text: 'Red' }), '. Si todavía no lo son, pedile su código de amigo.') : null,
     h('div', { class: 'acciones izq' },
       dueno ? h('button', { class: 'btn peligro mini', onclick: () => cambiarTipo('personal') }, 'Volver a personal') : null,
       !dueno && soyIntegrante(c) ? h('button', { class: 'btn peligro mini', onclick: async () => {
