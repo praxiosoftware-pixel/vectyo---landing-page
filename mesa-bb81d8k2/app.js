@@ -80,6 +80,8 @@ const ICONOS = {
   mail: 'M3 6h18v12H3z|M3 7l9 6 9-6',
   camara: 'M4 8h3l2-3h6l2 3h3v11H4z|M12 16.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z',
   volver: 'M19 12H5|M11 6l-6 6 6 6',
+  mapa: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z|M3.6 9h16.8|M3.6 15h16.8|M12 3c2.3 2.5 3.4 5.5 3.4 9s-1.1 6.5-3.4 9c-2.3-2.5-3.4-5.5-3.4-9S9.7 5.5 12 3z',
+  pin: 'M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z|M12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
 };
 function icono(nombre) {
   return s('svg', { class: 'ico', viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' },
@@ -325,7 +327,7 @@ function vigilarInactividad() {
 // ------------------------------------------------------------------
 let $main;
 function secciones() {
-  const l = [['#/clientes', 'Clientes', 'clientes'], ['#/finanzas', 'Finanzas', 'finanzas']];
+  const l = [['#/clientes', 'Clientes', 'clientes'], ['#/finanzas', 'Finanzas', 'finanzas'], ['#/mapa', 'Mapa', 'mapa']];
   if (esAdmin()) l.push(['#/registro', 'Registro', 'registro']);
   return l;
 }
@@ -356,6 +358,7 @@ function marcarNav() {
 }
 async function ruta() {
   if (!yo || !$main) return;
+  if (typeof mapaPanel !== 'undefined' && mapaPanel) { try { mapaPanel.remove(); } catch { /* nada */ } mapaPanel = null; }
   const [, seccionCruda, id] = location.hash.split('?')[0].split('/');
   const seccion = seccionCruda || 'clientes';
   marcarNav();
@@ -363,6 +366,7 @@ async function ruta() {
   try {
     if (seccion === 'cliente' && id) await vistaFicha(decodeURIComponent(id));
     else if (['finanzas', 'plata', 'analytics'].includes(seccion)) await vistaFinanzas();
+    else if (seccion === 'mapa') await vistaMapa();
     else if (seccion === 'registro' && esAdmin()) await vistaRegistro();
     else await vistaClientes();
   } catch (e) {
@@ -418,30 +422,33 @@ async function vistaClientes() {
 function formCliente(c = {}) {
   const servs = new Set(c.servicios || []);
   const extras = [...servs].filter((x) => !SERVICIOS.includes(x));
-  const cuerpo = h('div', { class: 'grilla-form' },
-    campo('Nombre del negocio *', inp('nombre', c.nombre, { required: true, maxlength: 200 }), 'entera'),
-    campo('Persona de contacto', inp('contacto', c.contacto)),
-    campo('WhatsApp', inp('whatsapp', c.whatsapp, { inputmode: 'tel', placeholder: 'Ej: 2664639451' })),
-    campo('Mail', inp('email', c.email, { type: 'email', inputmode: 'email' })),
-    campo('Instagram', inp('instagram', c.instagram, { placeholder: '@usuario' })),
-    campo('Web', inp('web', c.web, { placeholder: 'ejemplo.com' })),
-    campo('Rubro', inp('rubro', c.rubro)),
-    campo('Ciudad', inp('ciudad', c.ciudad)),
-    campo('Cómo nos conoció', inp('origen', c.origen)),
-    campo('Etapa', sel('etapa', ETAPAS, c.etapa || 'consulta')),
-    campo('Responsable', sel('responsable', ['Luciano', 'Juan'], c.responsable || yo.nombre.split(' ')[0])),
-    h('fieldset', { class: 'entera campo' }, h('legend', { class: 'suave chico', text: 'Servicios' }),
-      h('div', { class: 'grilla-form' }, [...SERVICIOS, ...extras].map((sv) => h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'servicios', value: sv, checked: servs.has(sv) }), sv)))),
-    campo('Próxima acción', inp('proxima_accion', c.proxima_accion, { placeholder: 'Qué hay que hacer' })),
-    campo('Fecha de la próxima acción', inp('fecha_proxima_accion', c.fecha_proxima_accion, { type: 'date' })),
-    h('h3', { class: 'entera', text: 'Cómo es y cómo le gusta trabajar' }),
-    campo('Personalidad', area('personalidad', c.personalidad, { placeholder: 'Ej: detallista, decide rápido, le importa el precio…' }), 'entera'),
-    campo('Forma de trabajar que le gusta', area('forma_trabajo', c.forma_trabajo, { placeholder: 'Ej: prefiere audios, reuniones cortas, todo por escrito…' }), 'entera'),
-    campo('Canal preferido', inp('canal_preferido', c.canal_preferido, { placeholder: 'WhatsApp, mail, llamada…' })),
-    campo('Horarios', inp('horarios', c.horarios, { placeholder: 'Cuándo conviene escribirle' })),
-    campo('Cosas a evitar', area('evitar', c.evitar), 'entera'),
-    campo('Notas', area('notas', c.notas), 'entera'),
-    seccionMapa(c));
+  const grupo = (titulo, ...campos) => h('fieldset', { class: 'grupo' }, h('legend', { text: titulo }), h('div', { class: 'grilla-form' }, ...campos));
+  const cuerpo = h('div', { class: 'grupos' },
+    grupo('Negocio',
+      campo('Nombre del negocio *', inp('nombre', c.nombre, { required: true, maxlength: 200 }), 'entera'),
+      campo('Rubro', inp('rubro', c.rubro, { placeholder: 'Ej: Panadería' })),
+      campo('Ciudad', inp('ciudad', c.ciudad, { placeholder: 'Ej: San Luis' })),
+      campo('Cómo nos conoció', inp('origen', c.origen, { placeholder: 'Instagram, referido…' }), 'entera')),
+    grupo('Contacto',
+      campo('Persona de contacto', inp('contacto', c.contacto)),
+      campo('WhatsApp', inp('whatsapp', c.whatsapp, { inputmode: 'tel', placeholder: 'Ej: 2664639451' })),
+      campo('Mail', inp('email', c.email, { type: 'email', inputmode: 'email', placeholder: 'nombre@negocio.com' })),
+      campo('Instagram', inp('instagram', c.instagram, { placeholder: '@usuario' })),
+      campo('Web', inp('web', c.web, { placeholder: 'negocio.com' }), 'entera')),
+    grupo('Seguimiento',
+      campo('Etapa', sel('etapa', ETAPAS, c.etapa || 'consulta')),
+      campo('Responsable', sel('responsable', ['Luciano', 'Juan'], c.responsable || yo.nombre.split(' ')[0])),
+      campo('Próxima acción', inp('proxima_accion', c.proxima_accion, { placeholder: 'Qué hay que hacer' })),
+      campo('Para cuándo', inp('fecha_proxima_accion', c.fecha_proxima_accion, { type: 'date' }))),
+    grupo('Servicios que le hacemos',
+      h('div', { class: 'chips entera' }, [...SERVICIOS, ...extras].map((sv) => h('label', {}, h('input', { type: 'checkbox', name: 'servicios', value: sv, checked: servs.has(sv) }), h('span', { text: sv }))))),
+    grupo('Cómo es y cómo le gusta trabajar',
+      campo('Personalidad', area('personalidad', c.personalidad, { placeholder: 'Ej: detallista, decide rápido, le importa el precio…' }), 'entera'),
+      campo('Forma de trabajar que le gusta', area('forma_trabajo', c.forma_trabajo, { placeholder: 'Ej: prefiere audios, reuniones cortas, todo por escrito…' }), 'entera'),
+      campo('Canal preferido', inp('canal_preferido', c.canal_preferido, { placeholder: 'WhatsApp, mail, llamada…' })),
+      campo('Horarios', inp('horarios', c.horarios, { placeholder: 'Cuándo conviene escribirle' })),
+      campo('Cosas a evitar', area('evitar', c.evitar, { rows: 2 }), 'entera')),
+    grupo('Notas', campo('Notas internas', area('notas', c.notas), 'entera')));
   return dialogo({
     titulo: c.id ? 'Editar cliente' : 'Nuevo cliente',
     cuerpo,
@@ -451,68 +458,12 @@ function formCliente(c = {}) {
         const v = String(fd.get(k) ?? '').trim();
         fila[k] = v || null;
       }
-      Object.assign(fila, leerMapa(fd));
       if (c.id) fila.id = c.id;
       const r = await datos.guardarCliente(fila);
       aviso('Cliente guardado.');
       return r;
     },
   });
-}
-
-// ---------- Pin en el mapa de la web (página Clientes) ----------
-const SERV_MAPA = [['webs', 'Webs'], ['ia', 'IA y bots'], ['redes', 'Redes'], ['marca', 'Marca']];
-function seccionMapa(c) {
-  const publicar = h('input', { type: 'checkbox', name: 'mapa_publicar', checked: c.mapa_publicar });
-  const ciudad = inp('mapa_ciudad', c.mapa_ciudad || c.ciudad?.replace(/\s*\(.*\)\s*/g, ''), { placeholder: 'Ej: San Luis' });
-  const pais = inp('mapa_pais', c.mapa_pais || 'Argentina', { placeholder: 'Ej: Argentina' });
-  const lat = h('input', { type: 'hidden', name: 'mapa_lat', value: c.mapa_lat ?? '' });
-  const lng = h('input', { type: 'hidden', name: 'mapa_lng', value: c.mapa_lng ?? '' });
-  const estadoUbic = h('p', { class: 'chico', text: c.mapa_lat != null ? `Ubicación cargada (${Number(c.mapa_lat).toFixed(2)}, ${Number(c.mapa_lng).toFixed(2)}).` : 'Tocá "Buscar" para ubicar la ciudad en el mapa.' });
-  const buscar = h('button', { type: 'button', class: 'btn sec', onclick: async () => {
-    const q = [ciudad.value.trim(), pais.value.trim()].filter(Boolean).join(', ');
-    if (!ciudad.value.trim()) { estadoUbic.textContent = 'Escribí la ciudad primero.'; return ciudad.focus(); }
-    buscar.disabled = true; estadoUbic.textContent = 'Buscando…';
-    try {
-      const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=es&featureType=city&q=' + encodeURIComponent(q), { referrerPolicy: 'no-referrer' });
-      const [lugar] = await r.json();
-      if (!lugar) { estadoUbic.textContent = 'No encontré esa ciudad. Probá escribiéndola distinto o agregando la provincia.'; return; }
-      lat.value = Number(lugar.lat).toFixed(4); lng.value = Number(lugar.lon).toFixed(4);
-      estadoUbic.textContent = 'Encontrada: ' + lugar.display_name + '.';
-    } catch { estadoUbic.textContent = 'No se pudo buscar. Revisá internet y probá de nuevo.'; }
-    finally { buscar.disabled = false; }
-  } }, 'Buscar');
-  // Si cambia la ciudad, hay que volver a buscarla
-  for (const x of [ciudad, pais]) x.addEventListener('input', () => { lat.value = ''; lng.value = ''; estadoUbic.textContent = 'Tocá "Buscar" para ubicar la ciudad en el mapa.'; });
-  const servs = new Set(c.mapa_servicios || []);
-  const cuerpo = h('div', { class: 'grilla-form entera' },
-    campo('Nombre que se muestra', inp('mapa_nombre', c.mapa_nombre, { placeholder: c.nombre || 'Igual al nombre del negocio' }), 'entera'),
-    campo('Ciudad', ciudad), campo('País', pais),
-    h('div', { class: 'entera', style: null }, buscar, ' ', estadoUbic, lat, lng),
-    h('fieldset', { class: 'entera campo' }, h('legend', { class: 'suave chico', text: 'Servicios que se muestran' }),
-      h('div', { class: 'chips' }, SERV_MAPA.map(([v, t]) => h('label', {}, h('input', { type: 'checkbox', name: 'mapa_servicios', value: v, checked: servs.has(v) }), h('span', { text: t }))))),
-    h('div', { class: 'entera campo' }, h('span', { class: 'suave chico', text: 'Estado' }), segmento('mapa_estado', [['en marcha', 'En marcha'], ['entregado', 'Entregado']], c.mapa_estado || 'en marcha')),
-    h('p', { class: 'chico suave entera', text: 'En la web solo se ve el nombre, la ciudad, el país, los servicios y el estado. Nada más de la ficha.' }));
-  const sincronizar = () => { cuerpo.hidden = !publicar.checked; };
-  publicar.addEventListener('change', sincronizar);
-  sincronizar();
-  return h('div', { class: 'entera bloque-mapa' }, h('h3', { text: 'Mapa de la web' }),
-    h('label', { class: 'check' }, publicar, 'Mostrar en el mapa de la página Clientes'), cuerpo);
-}
-function leerMapa(fd) {
-  const publicar = fd.get('mapa_publicar') === 'on';
-  const num = (k) => (String(fd.get(k) ?? '').trim() === '' ? null : Number(fd.get(k)));
-  const fila = {
-    mapa_publicar: publicar,
-    mapa_nombre: String(fd.get('mapa_nombre') ?? '').trim() || null,
-    mapa_ciudad: String(fd.get('mapa_ciudad') ?? '').trim() || null,
-    mapa_pais: String(fd.get('mapa_pais') ?? '').trim() || null,
-    mapa_lat: num('mapa_lat'), mapa_lng: num('mapa_lng'),
-    mapa_servicios: fd.getAll('mapa_servicios'),
-    mapa_estado: fd.get('mapa_estado') || 'en marcha',
-  };
-  if (publicar && (fila.mapa_lat == null || !fila.mapa_ciudad)) throw new Error('Para mostrarlo en el mapa, escribí la ciudad y tocá "Buscar".');
-  return fila;
 }
 
 async function vistaFicha(id) {
@@ -546,17 +497,21 @@ async function vistaFicha(id) {
     h('button', { class: 'btn', onclick: nuevoPago }, icono('pago'), 'Cargar pago'),
     h('button', { class: 'btn sec', onclick: subirPdf }, icono('subir'), 'Subir PDF'),
     h('button', { class: 'btn sec', onclick: async () => { if (await formCliente(c)) recargar(); } }, icono('editar'), 'Editar'),
-    urlInstagram(c.instagram) && h('a', { class: 'btn sec mini', href: urlInstagram(c.instagram), target: '_blank', rel: 'noopener noreferrer', text: 'Instagram' }),
-    urlWeb(c.web) && h('a', { class: 'btn sec mini', href: urlWeb(c.web), target: '_blank', rel: 'noopener noreferrer' }, icono('web'), 'Web'),
-    c.email && h('a', { class: 'btn sec mini', href: 'mailto:' + c.email }, icono('mail'), 'Mail'),
   ];
+  const enlaces = [
+    urlInstagram(c.instagram) && h('a', { class: 'enlace', href: urlInstagram(c.instagram), target: '_blank', rel: 'noopener noreferrer', text: 'Instagram' }),
+    urlWeb(c.web) && h('a', { class: 'enlace', href: urlWeb(c.web), target: '_blank', rel: 'noopener noreferrer' }, icono('web'), 'Web'),
+    c.email && h('a', { class: 'enlace', href: 'mailto:' + c.email }, icono('mail'), c.email),
+  ].filter(Boolean);
   const cab = h('div', { class: 'ficha-cab vidrio' }, fotoBox,
     h('div', { class: 'info' },
       h('h1', { text: c.nombre }),
       h('div', {}, h('span', { class: 'chip etapa-' + c.etapa, text: nombreEtapa(c.etapa) }), ' ',
         (c.servicios || []).map((sv) => [h('span', { class: 'chip', text: sv }), ' '])),
-      h('div', { class: 'botones' }, links,
-        esAdmin() && h('button', { class: 'btn peligro mini', onclick: async () => {
+      h('div', { class: 'botones' }, links),
+      enlaces.length ? h('div', { class: 'enlaces' }, enlaces) : null,
+      h('div', { class: 'botones' },
+        esAdmin() && h('button', { class: 'btn peligro mini borrar-cliente', onclick: async () => {
           if (!await confirmar('¿Borrar ' + c.nombre + '?', 'Se borra la ficha con su historial, tratos y PDF. Los pagos quedan en Finanzas, sin cliente. No se puede deshacer.')) return;
           await intentar(() => datos.borrarCliente(c), 'Cliente borrado.');
           location.hash = '#/clientes';
@@ -577,7 +532,8 @@ async function vistaFicha(id) {
       fila('Rubro', c.rubro), fila('Ciudad', c.ciudad), fila('Nos conoció por', c.origen), fila('Responsable', c.responsable),
       fila('Próxima acción', c.proxima_accion ? [c.proxima_accion, c.fecha_proxima_accion ? h('span', { class: vencida ? 'debe' : 'suave', text: ' · ' + fechaLinda(c.fecha_proxima_accion) + (vencida ? ' (vencida)' : '') }) : null] : null),
       fila('Alta', fechaLinda(c.creado_en)),
-      fila('Mapa de la web', c.mapa_publicar ? `Se muestra en ${[c.mapa_ciudad, c.mapa_pais].filter(Boolean).join(', ')}` : 'No se muestra')));
+      fila('Mapa de la web', [c.mapa_publicar ? `Se muestra en ${[c.mapa_ciudad, c.mapa_pais].filter(Boolean).join(', ')} ` : 'No se muestra ',
+        h('a', { class: 'btn sec mini', href: '#/mapa?cliente=' + encodeURIComponent(c.id) }, icono('pin'), c.mapa_publicar ? 'Mover' : 'Ubicar en el mapa')])));
 
   // Tratos económicos
   const ingresos = movs.filter((m) => m.tipo === 'ingreso');
@@ -597,16 +553,17 @@ async function vistaFicha(id) {
     } else {
       detalle = h('span', { class: saldo > 0 ? 'debe' : 'al-dia', text: saldo > 0 ? 'Debe ' + plata(saldo, a.moneda) : 'Pagado completo' });
     }
-    return h('li', {},
+    return h('li', { class: 'li-trato' },
       h('div', { class: 'cuerpo' },
-        h('p', {}, h('strong', { text: a.concepto }), ' · ', plata(a.monto, a.moneda), a.tipo === 'mensual' ? ' por mes' : ''),
+        h('p', { class: 'trato-cab' }, h('strong', { text: a.concepto }), h('span', { class: 'monto', text: plata(a.monto, a.moneda) + (a.tipo === 'mensual' ? ' /mes' : '') })),
         h('p', { class: 'chico suave', text: [TIPO_ACUERDO[a.tipo], 'desde ' + fechaLinda(a.fecha), a.estado !== 'vigente' ? a.estado : null, a.condiciones].filter(Boolean).join(' · ') }),
         h('p', { class: 'chico' }, 'Cobrado ' + plata(cobrado, a.moneda) + ' · ', detalle)),
-      h('button', { class: 'btn sec mini', text: 'Editar', onclick: async () => { if (await formAcuerdo(c, a)) recargar(); } }),
-      esAdmin() && h('button', { class: 'btn peligro mini', text: 'Borrar', 'aria-label': 'Borrar trato', onclick: async () => {
-        if (!await confirmar('¿Borrar el trato?', 'Se borra "' + a.concepto + '". Los pagos ya cargados quedan.')) return;
-        await intentar(() => datos.borrarAcuerdo(a.id), 'Trato borrado.'); recargar();
-      } }));
+      h('div', { class: 'acciones-li' },
+        h('button', { class: 'btn sec mini', onclick: async () => { if (await formAcuerdo(c, a)) recargar(); } }, icono('editar'), 'Editar'),
+        esAdmin() && h('button', { class: 'btn peligro mini btn-icono', 'aria-label': 'Borrar trato', title: 'Borrar trato', onclick: async () => {
+          if (!await confirmar('¿Borrar el trato?', 'Se borra "' + a.concepto + '". Los pagos ya cargados quedan.')) return;
+          await intentar(() => datos.borrarAcuerdo(a.id), 'Trato borrado.'); recargar();
+        } }, icono('borrar'))));
   });
   const resumen = Object.entries(totales).map(([mon, t]) => h('div', { class: 'saldo' },
     h('div', {}, h('span', { text: 'Acordado (' + mon + ')' }), h('strong', { text: plata(t.acordado, mon) })),
@@ -664,7 +621,9 @@ async function vistaFicha(id) {
   poner($main, 
     h('a', { class: 'volver', href: '#/clientes' }, icono('volver'), 'Clientes'),
     cab,
-    h('div', { class: 'ficha-grilla' }, pPersona, pDatos, pPlata, pArchivos, pHistorial, pNotas));
+    h('div', { class: 'ficha-columnas' },
+      h('div', { class: 'columna' }, pPersona, pDatos, pNotas),
+      h('div', { class: 'columna' }, pPlata, pArchivos, pHistorial)));
 }
 
 function formAcuerdo(c, a = {}) {
@@ -921,6 +880,162 @@ async function vistaFinanzas() {
     h('div', { class: 'graficos bloque' }, pFijos, graf2),
     h('div', { class: 'bloque' }, graf1),
     h('div', { class: 'bloque' }, tabla));
+}
+
+// ------------------------------------------------------------------
+// Mapa de la web: tocar el globo, cargar el pin y editarlo
+// ------------------------------------------------------------------
+// La librería del mapa (MapLibre 5.24.0) está copiada en vendor/ y se carga solo
+// en esta pantalla, con verificación de integridad. Los mapas son de OpenFreeMap.
+const SERV_MAPA = [['webs', 'Webs'], ['ia', 'IA y bots'], ['redes', 'Redes'], ['marca', 'Marca']];
+const ESTILO_MAPA = 'https://tiles.openfreemap.org/styles/positron';
+let cargaMapLibre = null;
+function cargarMapLibre() {
+  if (window.maplibregl) return Promise.resolve(window.maplibregl);
+  if (cargaMapLibre) return cargaMapLibre;
+  cargaMapLibre = new Promise((ok, no) => {
+    const css = h('link', { rel: 'stylesheet', integrity: 'sha384-uTttxo/aOKbdE5RlD/SPzSDoDmNvGlUYPjONi2MN/b7c9HPSvW07OIuyP7uL6jxK' });
+    css.href = 'vendor/maplibre-gl-5.24.0.css'; // archivo propio (el filtro de enlaces es para links de usuarios)
+    const js = h('script', { src: 'vendor/maplibre-gl-5.24.0.js', integrity: 'sha384-5+cfbwT0iiub6VsQAdn6yz16nr6sDiQoHx6tm4O8OVYXHYOxcffFmCJBL0dgdvGp' });
+    js.addEventListener('load', () => ok(window.maplibregl));
+    js.addEventListener('error', () => { cargaMapLibre = null; no(new Error('No se pudo cargar el mapa. Revisá internet y recargá.')); });
+    document.head.append(css, js);
+  });
+  return cargaMapLibre;
+}
+
+async function lugarDePunto(lat, lng) {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&accept-language=es&lat=${lat}&lon=${lng}`, { referrerPolicy: 'no-referrer' });
+    const d = await r.json();
+    const a = d.address || {};
+    return { ciudad: a.city || a.town || a.village || a.municipality || a.county || a.state || '', pais: a.country || '' };
+  } catch { return { ciudad: '', pais: '' }; }
+}
+
+function pinElemento(c) {
+  const el = h('button', { type: 'button', class: 'pin-mapa' + (c.mapa_estado === 'entregado' ? ' entregado' : ''), 'aria-label': 'Pin de ' + (c.mapa_nombre || c.nombre), title: c.mapa_nombre || c.nombre },
+    h('img', { src: 'isotipo.svg', alt: '' }));
+  return el;
+}
+
+// Cuadro para cargar o editar un pin
+async function formPin({ cliente, lat, lng, clientes, sugerencia }) {
+  const nuevo = !cliente;
+  const sinPin = clientes.filter((c) => !c.mapa_publicar);
+  const elegir = nuevo ? sel('cliente_id', [['__nuevo', '+ Cliente nuevo'], ...sinPin.map((c) => [c.id, c.nombre])], sinPin.length ? sinPin[0].id : '__nuevo') : null;
+  const nombreNuevo = inp('nombre_nuevo', '', { placeholder: 'Nombre del negocio', maxlength: 200 });
+  const campoNuevo = campo('Nombre del cliente nuevo *', nombreNuevo, 'entera');
+  const c = cliente || {};
+  const cuerpo = h('div', { class: 'grilla-form' },
+    elegir ? campo('¿De qué cliente es?', elegir, 'entera') : null,
+    elegir ? campoNuevo : null,
+    campo('Nombre que se muestra en la web', inp('mapa_nombre', c.mapa_nombre, { placeholder: 'Si lo dejás vacío, va el nombre del negocio' }), 'entera'),
+    campo('Ciudad *', inp('mapa_ciudad', c.mapa_ciudad || sugerencia?.ciudad || '', { required: true })),
+    campo('País', inp('mapa_pais', c.mapa_pais || sugerencia?.pais || '')),
+    h('div', { class: 'campo entera' }, h('span', { text: 'Servicios que se muestran' }),
+      h('div', { class: 'chips' }, SERV_MAPA.map(([v, t]) => h('label', {}, h('input', { type: 'checkbox', name: 'mapa_servicios', value: v, checked: (c.mapa_servicios || []).includes(v) }), h('span', { text: t }))))),
+    h('div', { class: 'campo entera' }, h('span', { text: 'Estado' }), segmento('mapa_estado', [['en marcha', 'En marcha'], ['entregado', 'Entregado']], c.mapa_estado || 'en marcha')),
+    h('p', { class: 'chico suave entera', text: `Ubicación: ${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)}. En la web solo se ve el nombre, la ciudad, el país, los servicios y el estado.` }));
+  const syncNuevo = () => { campoNuevo.hidden = !elegir || elegir.value !== '__nuevo'; };
+  if (elegir) { elegir.addEventListener('change', syncNuevo); syncNuevo(); }
+  return dialogo({
+    titulo: nuevo ? 'Nuevo pin' : 'Pin de ' + (c.nombre || ''),
+    cuerpo,
+    textoGuardar: nuevo ? 'Poner el pin' : 'Guardar',
+    alGuardar: async (fd) => {
+      const ciudad = String(fd.get('mapa_ciudad') || '').trim();
+      if (!ciudad) throw new Error('Escribí la ciudad.');
+      const datosPin = {
+        mapa_publicar: true, mapa_lat: Number(lat), mapa_lng: Number(lng), mapa_ciudad: ciudad,
+        mapa_pais: String(fd.get('mapa_pais') || '').trim() || null,
+        mapa_nombre: String(fd.get('mapa_nombre') || '').trim() || null,
+        mapa_servicios: fd.getAll('mapa_servicios'), mapa_estado: fd.get('mapa_estado') || 'en marcha',
+      };
+      if (nuevo && fd.get('cliente_id') === '__nuevo') {
+        const nombre = String(fd.get('nombre_nuevo') || '').trim();
+        if (!nombre) throw new Error('Escribí el nombre del cliente nuevo.');
+        await datos.guardarCliente({ nombre, ciudad: [ciudad, datosPin.mapa_pais].filter(Boolean).join(', '), ...datosPin });
+      } else {
+        await datos.guardarCliente({ id: nuevo ? fd.get('cliente_id') : c.id, ...datosPin });
+      }
+      aviso(nuevo ? 'Pin agregado' : 'Pin guardado');
+    },
+  });
+}
+
+async function quitarPin(c) {
+  if (!await confirmar('¿Sacar a ' + c.nombre + ' del mapa?', 'Deja de verse en la página Clientes de la web. La ficha no se borra.', 'Sacar del mapa')) return false;
+  await intentar(() => datos.guardarCliente({ id: c.id, mapa_publicar: false }), 'Sacado del mapa');
+  return true;
+}
+
+let mapaPanel = null;
+async function vistaMapa() {
+  const params = new URLSearchParams(location.hash.split('?')[1] || '');
+  const paraCliente = params.get('cliente');
+  const clientes = await datos.listarClientes();
+  const conPin = clientes.filter((c) => c.mapa_publicar && c.mapa_lat != null);
+  const objetivo = paraCliente ? clientes.find((c) => c.id === paraCliente) : null;
+
+  const lienzo = h('div', { class: 'mapa-lienzo', role: 'application', 'aria-label': 'Globo para ubicar los pines' });
+  const ayuda = h('div', { class: 'mapa-ayuda' }, icono('mas'), objetivo ? `Tocá el lugar exacto donde va ${objetivo.nombre}` : 'Tocá el lugar exacto donde querés poner un pin');
+  const lista = h('ul', { class: 'lista' }, conPin.length ? conPin.map((c) => h('li', {},
+    h('span', { class: 'icono-mov ingreso' }, icono('pin')),
+    h('div', { class: 'cuerpo' }, h('p', {}, h('strong', { text: c.mapa_nombre || c.nombre })),
+      h('p', { class: 'chico suave', text: [c.mapa_ciudad, c.mapa_pais].filter(Boolean).join(', ') + ' · ' + (c.mapa_estado === 'entregado' ? 'Entregado' : 'En marcha') })),
+    h('button', { class: 'btn sec mini', onclick: () => volarA(c) }, 'Ver'),
+    h('button', { class: 'btn sec mini btn-icono', 'aria-label': 'Editar pin de ' + c.nombre, onclick: async () => { if (await formPin({ cliente: c, lat: c.mapa_lat, lng: c.mapa_lng, clientes })) ruta(); } }, icono('editar')),
+    h('button', { class: 'btn peligro mini btn-icono', 'aria-label': 'Sacar del mapa a ' + c.nombre, onclick: async () => { if (await quitarPin(c)) ruta(); } }, icono('borrar')))) :
+    [h('li', { class: 'vacio-li' }, h('p', { class: 'suave', text: 'Todavía no hay pines. Tocá el globo donde trabajaste para un cliente.' }))]);
+
+  poner($main,
+    h('div', { class: 'encabezado' }, h('h1', { text: 'Mapa de la web' }),
+      h('a', { class: 'btn sec', href: 'https://vectyo-landing-page.vercel.app/trabajos.html', target: '_blank', rel: 'noopener noreferrer' }, icono('web'), 'Ver en la web')),
+    h('p', { class: 'suave bloque', text: 'Lo que ponés acá aparece al instante en el globo de la página Clientes. Podés arrastrar un pin para moverlo.' }),
+    h('section', { class: 'mapa-caja vidrio' }, lienzo, ayuda),
+    h('section', { class: 'panel bloque' }, h('h2', { text: `Pines en la web (${conPin.length})` }), lista));
+
+  let ml;
+  try { ml = await cargarMapLibre(); } catch (e) { poner(lienzo, h('p', { class: 'vacio', text: e.message })); return; }
+  if (mapaPanel) { try { mapaPanel.remove(); } catch { /* ya no existe */ } }
+  const mapa = new ml.Map({
+    container: lienzo, style: ESTILO_MAPA,
+    center: objetivo?.mapa_lng != null ? [objetivo.mapa_lng, objetivo.mapa_lat] : [-64, -30],
+    zoom: objetivo?.mapa_lat != null ? 5 : 2.4, maxZoom: 12, attributionControl: false,
+  });
+  mapaPanel = mapa;
+  mapa.addControl(new ml.NavigationControl({ showCompass: false }), 'top-right');
+  mapa.addControl(new ml.AttributionControl({ compact: true }), 'bottom-left');
+  mapa.on('style.load', () => { try { mapa.setProjection({ type: 'globe' }); } catch { /* versión sin globo */ } });
+
+  function volarA(c) { mapa.flyTo({ center: [c.mapa_lng, c.mapa_lat], zoom: 6, essential: true }); lienzo.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+
+  for (const c of conPin) {
+    const marcador = new ml.Marker({ element: pinElemento(c), draggable: true, anchor: 'bottom' }).setLngLat([c.mapa_lng, c.mapa_lat]).addTo(mapa);
+    marcador.getElement().addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      if (await formPin({ cliente: c, lat: c.mapa_lat, lng: c.mapa_lng, clientes })) ruta();
+    });
+    marcador.on('dragend', async () => {
+      const { lat, lng } = marcador.getLngLat();
+      try { await datos.guardarCliente({ id: c.id, mapa_lat: Number(lat.toFixed(5)), mapa_lng: Number(lng.toFixed(5)) }); c.mapa_lat = lat; c.mapa_lng = lng; aviso('Pin movido'); }
+      catch (e) { aviso(e.message, true); marcador.setLngLat([c.mapa_lng, c.mapa_lat]); }
+    });
+  }
+
+  let temporal = null;
+  mapa.on('click', async (ev) => {
+    const { lat, lng } = ev.lngLat;
+    if (temporal) temporal.remove();
+    temporal = new ml.Marker({ element: h('span', { class: 'pin-mapa nuevo' }, h('img', { src: 'isotipo.svg', alt: '' })), anchor: 'bottom' }).setLngLat([lng, lat]).addTo(mapa);
+    const sugerencia = await lugarDePunto(lat.toFixed(5), lng.toFixed(5));
+    const ok = objetivo
+      ? await formPin({ cliente: objetivo, lat: lat.toFixed(5), lng: lng.toFixed(5), clientes, sugerencia })
+      : await formPin({ lat: lat.toFixed(5), lng: lng.toFixed(5), clientes, sugerencia });
+    if (ok) { if (objetivo) location.hash = '#/mapa'; else ruta(); }
+    else if (temporal) { temporal.remove(); temporal = null; }
+  });
 }
 
 // ------------------------------------------------------------------
