@@ -181,6 +181,17 @@ function crearSupabase() {
     listarFeed: (cid) => sel(sb.from('feed').select('*').eq('cliente_id', cid).order('creado_en', { ascending: false }).limit(60)),
 
     // Red: directorio, amigos por código y mensajes (solo entre amigos; lo hace cumplir la base).
+    // IA (Claude): siempre a través de la función "ia" de Supabase. La página nunca ve la clave.
+    async ia(accion, datosPedido) {
+      const { data, error } = await sb.functions.invoke('ia', { body: { accion, ...datosPedido } });
+      if (error) {
+        let msg = 'La IA no está disponible ahora. Probá en un rato.';
+        try { const j = await error.context?.json?.(); if (j?.error) msg = j.error; } catch { /* sin cuerpo */ }
+        throw new Error(msg);
+      }
+      return data;
+    },
+    async iaMiUso() { const { data, error } = await sb.rpc('ia_mi_uso'); falla(error); return data; },
     listarRed: () => sel(sb.from('red_perfiles').select('*').order('nombre')),
     async miCodigoAmigo() { const { data, error } = await sb.rpc('mi_codigo_amigo'); falla(error); return data; },
     async renovarCodigoAmigo() { const { data, error } = await sb.rpc('renovar_codigo_amigo'); falla(error); return data; },
@@ -358,6 +369,7 @@ function crearDemo() {
     { id: uid(), de: 'demo-juan', para: LU, texto: 'Te dejé una tarea nueva en el compartido 👀', creado_en: new Date(Date.now() - 20 * 60000).toISOString(), leido_en: null },
   ];
   let oyenteRed = null;
+  let iaUsados = 0;
   const amigosDemo = (a, b) => db.amistades.some((x) => x.estado === 'aceptada' && ((x.de === a && x.para === b) || (x.de === b && x.para === a)));
   const alFeed = (cid, fila) => { if (db.clientes.find((c) => c.id === cid)?.tipo === 'compartido') db.feed.push({ id: uid(), cliente_id: cid, creado_en: new Date().toISOString(), ...fila }); };
   const integrantes = (cid) => db.miembros.filter((m) => m.cliente_id === cid);
@@ -559,6 +571,33 @@ function crearDemo() {
       return { mensajes: db.mensajes.filter((m) => m.para === yo.id && !m.leido_en).length, solicitudes: db.amistades.filter((x) => x.para === yo.id && x.estado === 'pendiente').length };
     },
     async escucharRed(fn) { oyenteRed = fn; return () => { oyenteRed = null; }; },
+    // IA de prueba: respuestas armadas, sin llamar a nadie.
+    async ia(accion, d) {
+      await new Promise((r) => setTimeout(r, 1200));
+      iaUsados++;
+      if (accion === 'redactar') {
+        const c = db.clientes.find((x) => x.id === d.cliente_id);
+        const n = (c?.contacto || 'che').split(' ')[0];
+        return { restantes: 20 - iaUsados, resultado: {
+          versiones: [
+            { titulo: 'Corto y directo', texto: `Hola ${n}! ${d.pedido.replace(/\.$/, '')}. Cualquier cosa avisame 👍` },
+            { titulo: 'Más cálido', texto: `Hola ${n}, ¿cómo va? Te escribo porque ${d.pedido.charAt(0).toLowerCase() + d.pedido.slice(1).replace(/\.$/, '')}. Si te queda más cómodo lo charlamos por audio. ¡Abrazo!` },
+          ],
+          consejo: c?.horarios ? `Según la ficha, conviene escribirle: ${c.horarios}.` : '',
+        } };
+      }
+      const t = String(d.texto || '').toLowerCase();
+      const num = Number((t.match(/[\d.,]+/) || ['0'])[0].replace(/\./g, '').replace(',', '.')) * (/lucas|\bk\b/.test(t) ? 1000 : 1);
+      return { restantes: 20 - iaUsados, resultado: {
+        tipo: /cobr|seña|pag[oó] el cliente/.test(t) ? 'ingreso' : 'gasto',
+        descripcion: d.imagen ? 'Ticket (demo)' : (t.includes('artlist') ? 'Artlist Pro' : 'Gasto (demo)'),
+        monto: d.imagen ? 18500 : (num || null), moneda: /usd|d[oó]lar|u\$s/.test(t) ? 'USD' : 'ARS',
+        categoria: t.includes('artlist') ? 'Otro' : /claude|ia\b|chatgpt/.test(t) ? 'Herramienta IA' : 'Otro',
+        frecuencia: /mensual|por mes|todos los meses/.test(t) ? 'mensual' : /anual|por año/.test(t) ? 'anual' : 'unico',
+        fecha: null, medio_pago: null, dudas: d.imagen ? 'Es el modo demo: no se leyó la foto de verdad.' : '',
+      } };
+    },
+    async iaMiUso() { return { usados: iaUsados, limite: 20, restantes: 20 - iaUsados }; },
     listarFeed: (cid) => espera(puedeVerId(cid) ? db.feed.filter((f) => f.cliente_id === cid).sort((a, b) => b.creado_en.localeCompare(a.creado_en)) : []),
     async subirFoto(c, archivo) { const p = uid(); fotos.set(p, URL.createObjectURL(archivo)); await guardar('clientes', { id: c.id, foto_path: p }); return p; },
     urlFoto: async (p) => fotos.get(p) || null,

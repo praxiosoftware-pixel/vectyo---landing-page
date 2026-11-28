@@ -374,3 +374,27 @@ select option { background: var(--superficie-max); color: var(--tinta); }
 .menu-pos { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--linea); }
 .menu-pos h3 { margin-bottom: 4px; }
 .menu-pos .segmento { max-width: 520px; margin-top: 10px; }
+
+/* ---------- IA (2026-11-28) ---------- */
+.boton-ia svg.ico { color: var(--acento); }
+[data-tema="asal"] .boton-ia svg.ico { color: #E0479E; }
+.fondo-ia { background: linear-gradient(135deg, #542F3C, #0057B8); }
+.dialogo-ia h2 { display: flex; align-items: center; gap: 10px; }
+.dialogo-ia h2 svg.ico { color: var(--acento); }
+.dialogo-ia .contenido { display: grid; gap: 14px; }
+.dialogo-ia .acciones { align-items: center; margin-top: 4px; }
+.uso-ia { margin-right: auto; }
+.chips-ia { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-ia { border: 0; cursor: pointer; padding: 7px 12px; border-radius: 999px; font: 500 .82rem var(--f-txt); color: var(--pizarra); background: var(--superficie-fuerte); box-shadow: inset 0 0 0 1px var(--linea); }
+.chip-ia:hover { color: var(--tinta); background: var(--superficie-max); }
+.resultado-ia { display: grid; gap: 12px; }
+.resultado-ia:empty { display: none; }
+.version-ia { display: grid; gap: 8px; padding: 14px; border-radius: 18px; background: var(--superficie); box-shadow: inset 0 0 0 1px var(--linea); }
+.version-ia textarea { min-height: 0; }
+.consejo-ia { display: flex; gap: 8px; align-items: flex-start; color: var(--pizarra); }
+.consejo-ia svg.ico { width: 16px; height: 16px; color: var(--acento); margin-top: 2px; flex-shrink: 0; }
+.vista-ia { display: flex; align-items: flex-end; gap: 10px; }
+.vista-ia img { max-height: 180px; max-width: 60%; border-radius: 12px; box-shadow: var(--sombra); }
+.girando { width: 16px; height: 16px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: girar .8s linear infinite; }
+@keyframes girar { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .girando { animation-duration: 2.4s; } }

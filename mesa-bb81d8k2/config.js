@@ -6,4 +6,5 @@ window.VECTYO_CONFIG = {
   supabaseUrl: 'https://rauekiejjkxgfoyicyhy.supabase.co',
   supabaseKey: 'sb_publishable_8NV1VqnKM6fKALVgSIyCUw_2zN5BGgx',
   minutosInactividad: 480, // 8 horas sin uso y pide entrar de nuevo
+  ia: false, // poner true cuando la función "ia" esté publicada en Supabase (ver INSTALACION.md → IA)
 };

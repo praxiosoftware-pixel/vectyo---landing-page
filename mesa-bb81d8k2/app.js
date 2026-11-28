@@ -6,6 +6,8 @@ const cfg = window.VECTYO_CONFIG || {};
 const $app = document.getElementById('app');
 let yo = null;
 const esAdmin = () => yo?.rol === 'admin';
+// Botones de IA: en el demo siempre; en el real, cuando config.js tiene ia: true.
+const iaActiva = () => MODO_DEMO || cfg.ia === true;
 const esUsuario = () => yo?.rol === 'usuario'; // cuenta abierta (no admin)
 // Personales y compartidos (fase 2). La base es la que hace cumplir la privacidad;
 // esto solo decide qué botones y listas mostrar.
@@ -92,6 +94,7 @@ const ICONOS = {
   perfil: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z|M4.5 20.5c1-3.8 4-5.8 7.5-5.8s6.5 2 7.5 5.8',
   candado: 'M6 11h12v10H6z|M8.5 11V8a3.5 3.5 0 0 1 7 0v3',
   check: 'M5 12.5l4.5 4.5L19 7',
+  chispa: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z|M19 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z',
   red: 'M12 7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z|M5.5 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z|M18.5 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z|M10.8 7.2 6.7 16.2|M13.2 7.2l4.1 9|M8 18.5h8',
   mensaje: 'M4 5h16v11H9l-5 4z|M8 9.5h8|M8 12.5h5',
   enviar: 'M4 12 20 4l-6 16-2.5-6.5z|M11.5 13.5 20 4',
@@ -472,6 +475,7 @@ function hojaNuevo() {
     h('div', { class: 'hoja' },
       opcion('ingreso', 'fondo-azul', 'Ingreso', 'Plata que entró: un cobro, una seña, un abono', () => formMovimiento({ tipo: 'ingreso' })),
       opcion('gasto', 'fondo-gasto', 'Gasto', 'Plata que salió: publicidad, herramientas, hosting…', () => formMovimiento({ tipo: 'gasto' })),
+      iaActiva() && opcion('chispa', 'fondo-ia', 'Cargar con IA', 'Una frase o la foto del ticket, y la IA completa el formulario', () => dialogoGastoIA()),
       opcion('clientes', 'fondo-ciruela', 'Cliente nuevo', 'Su ficha con datos y forma de trabajar', async () => { const c = await formCliente(); if (c) { location.hash = '#/cliente/' + c.id; return false; } return false; })),
     h('div', { class: 'acciones' }, h('button', { class: 'btn sec ancho', type: 'button', text: 'Cancelar', onclick: () => dlg.close() }))));
   dlg.addEventListener('close', () => dlg.remove());
@@ -1056,6 +1060,141 @@ async function escucharRed() {
 }
 
 // ------------------------------------------------------------------
+// IA (Claude) · siempre pasa por la función "ia" de Supabase
+// ------------------------------------------------------------------
+// La IA propone; la persona revisa y confirma. Nada se guarda ni se manda solo.
+function hojaIA(titulo, ...cuerpo) {
+  const dlg = h('dialog', { class: 'dialogo-ia', 'aria-label': titulo });
+  const cont = h('div', { class: 'contenido' }, h('h2', {}, icono('chispa'), titulo), ...cuerpo);
+  dlg.append(cont);
+  dlg.addEventListener('close', () => dlg.remove());
+  document.body.append(dlg);
+  dlg.showModal();
+  return { dlg, cont };
+}
+async function lineaUsoIA() {
+  const p = h('p', { class: 'chico suave uso-ia' });
+  datos.iaMiUso().then((u) => { p.textContent = `Te quedan ${u.restantes} de ${u.limite} usos de IA hoy.`; }).catch(() => {});
+  return p;
+}
+const textoUso = (r) => (r != null ? `Te quedan ${r} usos de IA hoy.` : '');
+function cargandoIA(boton, texto) {
+  const original = [...boton.childNodes];
+  boton.disabled = true;
+  poner(boton, h('span', { class: 'girando', 'aria-hidden': 'true' }), texto);
+  return () => { boton.disabled = false; poner(boton, original); };
+}
+
+// ---------- Redactar un mensaje para un cliente ----------
+const PEDIDOS_RAPIDOS = [
+  'Hacerle seguimiento a la propuesta que le mandamos',
+  'Pedirle la seña para arrancar',
+  'Recordarle un pago pendiente, con buena onda',
+  'Avisarle que su trabajo está listo para ver',
+  'Pedirle el material que falta (logo, fotos, textos)',
+  'Agradecerle y pedirle una reseña o recomendación',
+];
+async function dialogoRedactar(c) {
+  const pedido = area('pedido', '', { rows: 3, maxlength: 1500, placeholder: 'Ej: recordarle que mañana mandamos la primera versión y pedirle el logo en alta', 'aria-label': 'Qué le querés decir' });
+  const rapidos = h('div', { class: 'chips-ia' }, PEDIDOS_RAPIDOS.map((t) => h('button', { type: 'button', class: 'chip-ia', text: t, onclick: () => { pedido.value = t; pedido.focus(); } })));
+  const resultado = h('div', { class: 'resultado-ia', 'aria-live': 'polite' });
+  const error = h('p', { class: 'error' });
+  const uso = await lineaUsoIA();
+  const boton = h('button', { class: 'btn', type: 'button' }, icono('chispa'), 'Redactar');
+  const { dlg } = hojaIA('Redactar mensaje para ' + c.nombre,
+    h('p', { class: 'suave chico', text: `La IA usa la ficha y el historial de ${c.nombre} para escribir como le gusta. Revisá el mensaje antes de mandarlo.` }),
+    h('label', { class: 'campo' }, '¿Qué le querés decir?', pedido),
+    rapidos, error, resultado,
+    h('div', { class: 'acciones' }, uso, h('button', { class: 'btn sec', type: 'button', text: 'Cerrar', onclick: () => dlg.close() }), boton));
+  const tarjeta = (v) => {
+    const texto = area('texto', v.texto, { rows: Math.min(8, Math.max(3, Math.ceil(v.texto.length / 60))), 'aria-label': v.titulo });
+    const wsp = urlWhatsapp(c.whatsapp);
+    return h('div', { class: 'version-ia' },
+      h('strong', { text: v.titulo }), texto,
+      h('div', { class: 'acciones izq' },
+        wsp ? h('a', { class: 'btn verde mini', href: wsp, target: '_blank', rel: 'noopener noreferrer',
+          onclick: (ev) => { ev.currentTarget.href = wsp + '?text=' + encodeURIComponent(texto.value); } }, icono('whatsapp'), 'Abrir en WhatsApp') : null,
+        h('button', { class: 'btn sec mini', type: 'button', onclick: () => copiar(texto.value, 'Mensaje copiado.') }, icono('copiar'), 'Copiar'),
+        h('button', { class: 'btn sec mini', type: 'button', onclick: async (ev) => {
+          ev.currentTarget.disabled = true;
+          await intentar(() => datos.guardarHistorial({ cliente_id: c.id, fecha: hoyISO(), texto: 'Mensaje por WhatsApp: ' + texto.value.trim() }), 'Anotado en el historial.').catch(() => { ev.currentTarget.disabled = false; });
+        } }, 'Anotar en el historial')));
+  };
+  boton.addEventListener('click', async () => {
+    error.textContent = '';
+    if (!pedido.value.trim()) { error.textContent = 'Contá qué le querés decir (o tocá una de las opciones).'; return pedido.focus(); }
+    const listo = cargandoIA(boton, 'Redactando…');
+    try {
+      const r = await datos.ia('redactar', { cliente_id: c.id, pedido: pedido.value.trim() });
+      const { versiones = [], consejo } = r.resultado || {};
+      poner(resultado, versiones.slice(0, 2).map(tarjeta), consejo ? h('p', { class: 'chico consejo-ia' }, icono('chispa'), h('span', { text: consejo })) : null);
+      uso.textContent = textoUso(r.restantes);
+      poner(boton, icono('chispa'), 'Otra vez');
+      boton.disabled = false;
+    } catch (e) { listo(); error.textContent = e.message; }
+  });
+  if (matchMedia('(min-width: 700px)').matches) pedido.focus();
+}
+
+// ---------- Cargar un gasto o ingreso con una frase o una foto ----------
+// La foto se achica en el navegador (máx. 1568 px, JPG) antes de mandarla: pesa menos y cuesta menos.
+async function imagenParaIA(archivo) {
+  let bmp;
+  try { bmp = await createImageBitmap(archivo); }
+  catch { throw new Error('No pude abrir esa imagen. Probá con una foto JPG o PNG (en iPhone: compartila como "Más compatible").'); }
+  const escala = Math.min(1, 1568 / Math.max(bmp.width, bmp.height));
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(bmp.width * escala); cv.height = Math.round(bmp.height * escala);
+  cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+  const url = cv.toDataURL('image/jpeg', 0.85);
+  return { media_type: 'image/jpeg', data: url.split(',')[1], vista: url };
+}
+async function dialogoGastoIA() {
+  const texto = area('texto', '', { rows: 3, maxlength: 1500, placeholder: 'Ej: pagué 25 lucas de Artlist, es mensual · cobré 300 dólares de seña de la web de La Espiga', 'aria-label': 'Qué pagaste o cobraste' });
+  let imagen = null;
+  const vista = h('div', { class: 'vista-ia' });
+  const error = h('p', { class: 'error' });
+  const uso = await lineaUsoIA();
+  const boton = h('button', { class: 'btn', type: 'button' }, icono('chispa'), 'Leer con IA');
+  const subir = h('button', { class: 'btn sec mini', type: 'button', onclick: async () => {
+    const [f] = await elegirArchivo('image/*');
+    if (!f) return;
+    error.textContent = '';
+    try {
+      imagen = await imagenParaIA(f);
+      poner(vista, h('img', { src: imagen.vista, alt: 'Foto del comprobante' }),
+        h('button', { class: 'btn sec mini', type: 'button', text: 'Quitar foto', onclick: () => { imagen = null; poner(vista); } }));
+    } catch (e) { error.textContent = e.message; }
+  } }, icono('camara'), 'Foto del ticket o factura');
+  const { dlg } = hojaIA('Cargar con IA',
+    h('p', { class: 'suave chico', text: 'Escribilo como te salga o sacale una foto al comprobante. La IA completa el formulario y vos lo revisás antes de guardar.' }),
+    h('label', { class: 'campo' }, '¿Qué pagaste o cobraste?', texto),
+    h('div', { class: 'acciones izq' }, subir), vista, error,
+    h('div', { class: 'acciones' }, uso, h('button', { class: 'btn sec', type: 'button', text: 'Cancelar', onclick: () => dlg.close() }), boton));
+  return new Promise((resolver) => {
+    let siguiendo = false; // al pasar al formulario, el cierre de este cuadro no cuenta como "cancelar"
+    dlg.addEventListener('close', () => { if (!siguiendo) resolver(false); });
+    boton.addEventListener('click', async () => {
+      error.textContent = '';
+      if (!texto.value.trim() && !imagen) { error.textContent = 'Escribí qué pagaste o cobraste, o subí una foto.'; return texto.focus(); }
+      const listo = cargandoIA(boton, 'Leyendo…');
+      try {
+        const r = await datos.ia('gasto', { texto: texto.value.trim(), imagen: imagen ? { media_type: imagen.media_type, data: imagen.data } : undefined });
+        const m = r.resultado;
+        siguiendo = true;
+        dlg.close();
+        if (m.dudas) aviso('Revisá: ' + m.dudas);
+        // Se abre el formulario de siempre, ya completo, para confirmar.
+        const ok = await formMovimiento({ tipo: m.tipo, descripcion: m.descripcion, monto: m.monto ?? '', moneda: m.moneda, categoria: m.categoria,
+          frecuencia: m.frecuencia, fecha: m.fecha || hoyISO(), medio_pago: m.medio_pago || '' });
+        resolver(!!ok);
+      } catch (e) { listo(); error.textContent = e.message; }
+    });
+    if (matchMedia('(min-width: 700px)').matches) texto.focus();
+  });
+}
+
+// ------------------------------------------------------------------
 // Clientes
 // ------------------------------------------------------------------
 // Etiqueta de privacidad de un cliente (tarjeta y ficha)
@@ -1210,6 +1349,7 @@ async function vistaFicha(id) {
     urlWhatsapp(c.whatsapp) && h('a', { class: 'btn verde', href: urlWhatsapp(c.whatsapp), target: '_blank', rel: 'noopener noreferrer' }, icono('whatsapp'), 'WhatsApp'),
     h('button', { class: 'btn', onclick: nuevoPago }, icono('pago'), 'Cargar pago'),
     h('button', { class: 'btn sec', onclick: subirPdf }, icono('subir'), 'Subir PDF'),
+    iaActiva() && h('button', { class: 'btn sec boton-ia', onclick: () => dialogoRedactar(c) }, icono('chispa'), 'Redactar con IA'),
     h('button', { class: 'btn sec', onclick: async () => { if (await formCliente(c, { integrantes })) recargar(); } }, icono('editar'), 'Editar'),
   ];
   const enlaces = [
@@ -1824,7 +1964,8 @@ async function vistaFinanzas() {
   const carga = h('section', { class: 'panel' }, h('h2', { text: 'Cargar' }),
     h('div', { class: 'carga-rapida' },
       h('button', { class: 'btn', onclick: async () => { if (await formMovimiento({ tipo: 'ingreso', moneda })) ruta(); } }, icono('ingreso'), 'Ingreso'),
-      h('button', { class: 'btn gasto', onclick: async () => { if (await formMovimiento({ tipo: 'gasto', moneda })) ruta(); } }, icono('gasto'), 'Gasto')),
+      h('button', { class: 'btn gasto', onclick: async () => { if (await formMovimiento({ tipo: 'gasto', moneda })) ruta(); } }, icono('gasto'), 'Gasto'),
+      iaActiva() && h('button', { class: 'btn sec boton-ia', onclick: async () => { if (await dialogoGastoIA()) ruta(); } }, icono('chispa'), 'Con IA: foto o frase')),
     h('p', { class: 'chico suave bloque', text: 'Los gastos mensuales y anuales se cargan una sola vez: el panel los cuenta solo hasta que les des de baja.' }));
 
   // Movimientos del mes (incluye los recurrentes)
