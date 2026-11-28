@@ -229,6 +229,8 @@ async function iniciar() {
     if (mfa.nivel !== 'aal2') return pantallaMfa(mfa);
     yo = await datos.perfil();
     if (!yo) return pantallaSinPermiso();
+    // El estilo de la cuenta manda; si la base todavía no lo tiene, queda el de este dispositivo.
+    await aplicarTema(yo.tema || localStorage.getItem('vy-tema'), yo.fondo_path);
     if (!sessionStorage.getItem('vy-ingreso')) { sessionStorage.setItem('vy-ingreso', '1'); datos.registrarIngreso().catch(() => {}); }
     vigilarInactividad();
     if (!yo.perfil_completo) return pantallaBienvenida();
@@ -392,7 +394,7 @@ function armarMarco() {
   $main = h('main', { id: 'contenido' });
   poner($app, 
     h('header', { class: 'barra' },
-      h('a', { class: 'marca', href: '#/clientes' }, h('img', { src: 'isotipo-ciruela.svg', alt: '' }), 'VECTYO'),
+      h('a', { class: 'marca', href: '#/clientes' }, h('img', { class: 'logo-claro', src: 'isotipo-ciruela.svg', alt: '' }), h('img', { class: 'logo-oscuro', src: 'isotipo.svg', alt: '' }), 'VECTYO'),
       nav,
       h('div', { class: 'usuario' },
         h('a', { class: 'yo-mini', href: '#/perfil', title: 'Mi perfil' }, avatarPerfil(yo, 'mini'), h('span', { class: 'quien suave chico', text: yo.nombre })),
@@ -450,6 +452,50 @@ function hojaNuevo() {
 }
 
 // ------------------------------------------------------------------
+// Estilos de la interfaz (temas.css). Cada cuenta elige el suyo.
+// ------------------------------------------------------------------
+const TEMAS = [
+  ['vectyo', 'Vectyo', 'Claro, con vidrio blanco, ciruela y azul. El de la marca.', 'claro', '#F4F2F5'],
+  ['asal', 'Asal Design', 'Oscuro, con degradé violeta, rosa y azul, y botones blancos.', 'oscuro', '#0D0A10'],
+  ['ice', 'Ice Water', 'Vidrio gris esmerilado sobre una foto desenfocada, con detalles crema.', 'oscuro', '#2A2826'],
+  ['focus', 'Focus Power', 'Negro con verde neón y brillo, estilo terminal.', 'oscuro', '#040705'],
+];
+const temaValido = (t) => (TEMAS.some((x) => x[0] === t) ? t : 'vectyo');
+async function aplicarTema(tema, fondoPath = null) {
+  const t = temaValido(tema);
+  const [, , , modo, color] = TEMAS.find((x) => x[0] === t);
+  const raiz = document.documentElement;
+  if (t === 'vectyo') { raiz.removeAttribute('data-tema'); raiz.removeAttribute('data-modo'); }
+  else { raiz.setAttribute('data-tema', t); raiz.setAttribute('data-modo', modo); }
+  try { localStorage.setItem('vy-tema', t); } catch { /* sin almacenamiento */ }
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', color);
+  // Foto de fondo propia (Ice Water). Se pone por CSSOM: la política de seguridad no deja estilos en línea.
+  raiz.style.removeProperty('--foto-fondo');
+  if (t === 'ice' && fondoPath) {
+    const u = await datos.urlImagenPerfil(fondoPath).catch(() => null);
+    if (u) raiz.style.setProperty('--foto-fondo', `url("${u}")`);
+  }
+}
+// Tarjetas para elegir estilo. alElegir(tema) guarda; el cambio se ve en el momento.
+function selectorTemas(alElegir) {
+  const actual = temaValido(yo?.tema || localStorage.getItem('vy-tema'));
+  const grilla = h('div', { class: 'temas', role: 'group', 'aria-label': 'Estilo del panel' });
+  const pintar = (elegido) => poner(grilla, TEMAS.map(([id, nombre, desc]) => h('button', {
+    type: 'button', class: 'tema-op', 'aria-pressed': String(id === elegido),
+    onclick: async () => { pintar(id); await aplicarTema(id, yo?.fondo_path); await alElegir(id); },
+  },
+  h('span', { class: 'muestra', 'data-m': id, 'aria-hidden': 'true' }, h('i', { class: 'm-lat' }), h('i', { class: 'm-tit' }), h('i', { class: 'm-tar' }), h('i', { class: 'm-bot' })),
+  h('strong', {}, nombre, id === elegido ? icono('check') : null),
+  h('small', { text: desc }))));
+  pintar(actual);
+  return grilla;
+}
+async function guardarTema(t) {
+  try { yo = { ...yo, ...await datos.guardarPerfil({ tema: t }) }; }
+  catch (e) { yo = { ...yo, tema: t }; aviso(e.message, true); }
+}
+
+// ------------------------------------------------------------------
 // Perfil de cuenta
 // ------------------------------------------------------------------
 const limpiarArroba = (u, dominio) => String(u || '').trim().replace(dominio, '').replace(/^@/, '').replace(/[/?#].*$/, '');
@@ -490,7 +536,7 @@ async function cambiarImagen(tipo) {
   if (!f) return false;
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(f.type)) { aviso('Usá una imagen JPG, PNG o WebP.', true); return false; }
   if (f.size > 5 * 1024 * 1024) { aviso('La imagen pesa más de 5 MB. Probá con una más chica.', true); return false; }
-  const nuevo = await intentar(() => datos.subirImagenPerfil(yo, tipo, f), tipo === 'banner' ? 'Banner actualizado.' : 'Foto actualizada.');
+  const nuevo = await intentar(() => datos.subirImagenPerfil(yo, tipo, f), { banner: 'Banner actualizado.', fondo: 'Foto de fondo actualizada.' }[tipo] || 'Foto actualizada.');
   yo = { ...yo, ...nuevo };
   return true;
 }
@@ -528,7 +574,7 @@ const camposRedes = (p) => REDES.map(([k, t, ph]) => campo(t, inp(k, p[k], { pla
 
 // Paso a paso obligatorio la primera vez que se entra (también para las cuentas viejas).
 function pantallaBienvenida(paso = 1) {
-  const TOTAL = 4;
+  const TOTAL = 5;
   const error = h('p', { class: 'error' });
   const progreso = h('div', { class: 'pasos', 'aria-hidden': 'true' }, Array.from({ length: TOTAL }, (_, i) => h('span', { class: i < paso ? 'hecho' : '' })));
   const ir = (n) => pantallaBienvenida(n);
@@ -557,11 +603,15 @@ function pantallaBienvenida(paso = 1) {
     texto = 'Una línea que diga qué hacés. La edad es opcional y la podés ocultar.';
     opcional = true;
     cuerpo = h('div', { class: 'grilla-form' }, camposSobreVos(yo));
-  } else {
+  } else if (paso === 4) {
     titulo = 'Tus redes';
     texto = 'Completá las que uses. Se muestran como links en tu perfil.';
     opcional = true;
     cuerpo = h('div', { class: 'grilla-form' }, camposRedes(yo));
+  } else {
+    titulo = 'Elegí tu estilo';
+    texto = 'Así se va a ver tu panel. Tocá uno para probarlo; lo podés cambiar cuando quieras desde tu perfil.';
+    cuerpo = selectorTemas(guardarTema);
   }
   const ultimo = paso === TOTAL;
   const btn = h('button', { class: 'btn', type: 'submit', text: ultimo ? 'Terminar' : 'Siguiente' });
@@ -575,13 +625,13 @@ function pantallaBienvenida(paso = 1) {
     error.textContent = '';
     btn.disabled = true;
     try {
-      const campos = paso === 2 ? {} : camposPerfil(form);
+      const campos = paso === 2 || paso === 5 ? {} : camposPerfil(form);
       if (ultimo) campos.perfil_completo = true;
       if (Object.keys(campos).length) yo = { ...yo, ...await datos.guardarPerfil(campos) };
       if (ultimo) { terminar(); aviso('¡Listo! Tu perfil quedó armado.'); } else ir(paso + 1);
     } catch (e) { error.textContent = e.message; btn.disabled = false; }
   });
-  poner($app, h('div', { class: 'login' }, h('div', { class: 'panel bienvenida' },
+  poner($app, h('div', { class: 'login' }, h('div', { class: 'panel bienvenida' + (paso === 5 ? ' ancha' : '') },
     progreso, h('p', { class: 'chico suave paso', text: `Paso ${paso} de ${TOTAL}` }),
     h('h1', { text: titulo }), h('p', { class: 'suave', text: texto }), form,
     h('p', { class: 'pie-login' }, h('button', { class: 'link chico', type: 'button', text: 'Salir', onclick: () => salir() })))));
@@ -601,6 +651,34 @@ function formPerfil() {
     titulo: 'Editar perfil', cuerpo,
     alGuardar: async (_fd, form) => { yo = { ...yo, ...await datos.guardarPerfil(camposPerfil(form)) }; aviso('Perfil guardado.'); return yo; },
   });
+}
+
+function panelEstilo() {
+  const extra = h('div');
+  const pintarExtra = () => {
+    if (temaValido(yo.tema || localStorage.getItem('vy-tema')) !== 'ice') return poner(extra);
+    poner(extra, h('div', { class: 'fondo-propio' },
+      h('p', { class: 'chico suave', text: yo.fondo_path ? 'Fondo: tu foto (solo la ves vos).' : 'Fondo: la foto de Vectyo. Podés poner una tuya; se desenfoca sola y solo la ves vos.' }),
+      h('button', { class: 'btn sec mini', onclick: async () => {
+        if (await cambiarImagen('fondo').catch(() => false)) { await aplicarTema('ice', yo.fondo_path); pintarExtra(); }
+      } }, icono('imagen'), yo.fondo_path ? 'Cambiar mi foto' : 'Subir mi foto'),
+      yo.fondo_path ? h('button', { class: 'btn sec mini', text: 'Usar la de Vectyo', onclick: async () => {
+        await intentar(async () => { yo = { ...yo, ...await datos.guardarPerfil({ fondo_path: null }) }; }, 'Volviste a la foto de Vectyo.').catch(() => {});
+        await aplicarTema('ice', null); pintarExtra();
+      } }) : null));
+  };
+  pintarExtra();
+  return h('section', { class: 'panel' }, h('h2', {}, icono('imagen'), 'Estilo del panel'),
+    h('p', { class: 'suave chico bloque-abajo', text: 'Elegí cómo se ve tu panel. Se guarda en tu cuenta y te sigue en la compu y en el celular. Los demás no ven tu elección.' }),
+    selectorTemas(async (t) => { await guardarTema(t); pintarExtra(); armarMarcoSinPerder(); }),
+    extra);
+}
+// Rehace el menú (logo claro u oscuro) sin recargar la vista actual.
+function armarMarcoSinPerder() {
+  const contenido = $main ? [...$main.childNodes] : [];
+  armarMarco();
+  poner($main, contenido);
+  marcarNav();
 }
 
 async function vistaPerfil() {
@@ -623,6 +701,7 @@ async function vistaPerfil() {
           h('p', { class: 'suave' }, yo.usuario ? '@' + yo.usuario : 'Sin @usuario', e != null ? ` · ${e} años` : '', ' ', h('span', { class: 'chip', text: ROL[yo.rol] || yo.rol })),
           h('p', { class: 'texto-largo' + (yo.descripcion ? '' : ' suave'), text: yo.descripcion || 'Todavía no escribiste una descripción.' }),
           redes.length ? h('div', { class: 'enlaces' }, redes) : h('p', { class: 'chico suave', text: 'Sin redes cargadas.' })))),
+    panelEstilo(),
     h('section', { class: 'panel' }, h('h2', {}, icono('candado'), 'Quién ve tu perfil'),
       h('p', { class: 'suave', text: 'Tu perfil lo ven las personas con las que compartas un cliente y el administrador del panel. No es público ni aparece en la web.' })),
     null);
@@ -969,10 +1048,11 @@ function panelPrivacidad(c, integrantes, nombreDueno, recargar) {
 // (lunes a domingo) en que la completó. La base pone quién y cuándo.
 const IMPORTANCIA = [[1, 'Baja'], [2, 'Media'], [3, 'Alta'], [5, 'Crítica']];
 const nombreImportancia = (n) => (IMPORTANCIA.find((x) => x[0] === Number(n)) || [n, ''])[1];
-// Colores por integrante (validados para daltonismo sobre fondo claro). Siguen a la
+// Colores por integrante (validados para daltonismo). Siguen a la
 // persona por su orden de entrada al cliente, nunca por el puesto en el ranking.
-const COLORES_INTEGRANTES = ['#0057B8', '#C27A00', '#7A4FA8', '#1E7A4C'];
-const COLOR_OTROS = '#8A8287';
+// Cada estilo define sus 4 colores en temas.css (--int-1 a --int-4), validados contra su fondo.
+const COLORES_INTEGRANTES = ['var(--int-1)', 'var(--int-2)', 'var(--int-3)', 'var(--int-4)'];
+const COLOR_OTROS = 'var(--int-otros)';
 function inicioSemana(d = new Date()) {
   const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
@@ -1634,8 +1714,8 @@ function graficoMeses(meses, moneda) {
   meses.forEach((x, i) => {
     const cx = m.l + banda * i + banda / 2;
     svg.append(
-      s('path', { d: barra(cx - bw - 1, y(x.ingresos), bw, m.t + alto - y(x.ingresos)), fill: '#0057B8' }),
-      s('path', { d: barra(cx + 1, y(x.gastos), bw, m.t + alto - y(x.gastos)), fill: '#9C4A6B' }),
+      s('path', { d: barra(cx - bw - 1, y(x.ingresos), bw, m.t + alto - y(x.ingresos)), class: 'b-ing' }),
+      s('path', { d: barra(cx + 1, y(x.gastos), bw, m.t + alto - y(x.gastos)), class: 'b-gas' }),
       s('text', { class: 'eje', x: cx, y: H - 8, 'text-anchor': 'middle' }, x.nombre));
     const hit = s('rect', { x: m.l + banda * i, y: m.t, width: banda, height: alto, fill: 'transparent' });
     const mostrar = () => {

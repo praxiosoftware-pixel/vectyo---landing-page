@@ -22,6 +22,7 @@ export function traducirError(m) {
   if (t.includes('password should') || t.includes('weak password') || t.includes('weak_password')) return 'La contraseña es muy débil. Usá al menos 12 caracteres con minúsculas, mayúsculas, números y un símbolo.';
   if (t.includes('perfiles_usuario_unico') || (t.includes('duplicate key') && t.includes('usuario'))) return 'Ese @usuario ya lo usa otra persona. Probá con otro.';
   if (t.includes('perfiles_usuario_formato')) return 'El @usuario va de 3 a 30 caracteres: letras minúsculas, números, punto o guion bajo.';
+  if (t.includes('perfiles_tema_check') || (t.includes('tema') && t.includes('column'))) return 'No se pudo guardar el estilo en tu cuenta (falta correr 09-estilos.sql). En este dispositivo igual queda aplicado.';
   if (t.includes('perfiles_descripcion_largo')) return 'La descripción puede tener hasta 160 caracteres.';
   if (t.includes('fecha de nacimiento')) return 'La fecha de nacimiento no es válida (hay que tener al menos 13 años).';
   if (t.includes('invalid totp') || t.includes('invalid code') || t.includes('expired')) return 'El código no es válido o venció. Probá con el que aparece ahora en la app.';
@@ -131,7 +132,7 @@ function crearSupabase() {
       const path = `${perfil.id}/${tipo}-${crypto.randomUUID()}.${ext}`;
       const { error } = await sb.storage.from('perfiles').upload(path, archivo, { contentType: archivo.type, upsert: false });
       falla(error);
-      const col = tipo === 'banner' ? 'banner_path' : 'foto_path';
+      const col = { banner: 'banner_path', fondo: 'fondo_path' }[tipo] || 'foto_path';
       const anterior = perfil[col];
       const nuevo = await this.guardarPerfil({ [col]: path });
       if (anterior) await sb.storage.from('perfiles').remove([anterior]);
@@ -249,6 +250,7 @@ function crearDemo() {
   const yo = { id: 'demo-luciano', nombre: 'Luciano (demo)', rol: ['equipo', 'usuario'].includes(rolDemo) ? rolDemo : 'admin',
     usuario: null, descripcion: null, fecha_nacimiento: null, mostrar_edad: true, foto_path: null, banner_path: null,
     instagram: null, tiktok: null, linkedin: null, x: null, web: null, whatsapp: null,
+    tema: localStorage.getItem('vy-tema') || 'vectyo', fondo_path: null,
     perfil_completo: new URLSearchParams(location.search).has('completo') };
   let logueado = false, nivel = 'aal1';
   const fotos = new Map();
@@ -372,7 +374,7 @@ function crearDemo() {
       log('perfiles', 'update', yo);
       return espera(yo);
     },
-    async subirImagenPerfil(_p, tipo, archivo) { const p = uid(); fotos.set(p, URL.createObjectURL(archivo)); return this.guardarPerfil({ [tipo === 'banner' ? 'banner_path' : 'foto_path']: p }); },
+    async subirImagenPerfil(_p, tipo, archivo) { const p = uid(); fotos.set(p, URL.createObjectURL(archivo)); return this.guardarPerfil({ [{ banner: 'banner_path', fondo: 'fondo_path' }[tipo] || 'foto_path']: p }); },
     urlImagenPerfil: async (p) => fotos.get(p) || null,
 
     listarClientes: () => espera(db.clientes.filter(puedeVer).map(conIds).sort((a, b) => a.nombre.localeCompare(b.nombre))),
