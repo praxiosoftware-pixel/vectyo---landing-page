@@ -6,6 +6,13 @@ const cfg = window.VECTYO_CONFIG || {};
 const $app = document.getElementById('app');
 let yo = null;
 const esAdmin = () => yo?.rol === 'admin';
+const esUsuario = () => yo?.rol === 'usuario'; // cuenta abierta (no admin)
+// Personales y compartidos (fase 2). La base es la que hace cumplir la privacidad;
+// esto solo decide qué botones y listas mostrar.
+const soyDueno = (c) => c?.dueno_id === yo?.id;
+const soyIntegrante = (c) => c?.tipo === 'compartido' && (c.miembros_ids || []).includes(yo?.id);
+const esMio = (c) => soyDueno(c) || soyIntegrante(c);
+const puedoBorrarEn = (c) => esAdmin() || soyDueno(c);
 
 // ------------------------------------------------------------------
 // Constantes
@@ -82,6 +89,10 @@ const ICONOS = {
   volver: 'M19 12H5|M11 6l-6 6 6 6',
   mapa: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z|M3.6 9h16.8|M3.6 15h16.8|M12 3c2.3 2.5 3.4 5.5 3.4 9s-1.1 6.5-3.4 9c-2.3-2.5-3.4-5.5-3.4-9S9.7 5.5 12 3z',
   pin: 'M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z|M12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
+  perfil: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z|M4.5 20.5c1-3.8 4-5.8 7.5-5.8s6.5 2 7.5 5.8',
+  candado: 'M6 11h12v10H6z|M8.5 11V8a3.5 3.5 0 0 1 7 0v3',
+  check: 'M5 12.5l4.5 4.5L19 7',
+  imagen: 'M3 5h18v14H3z|M3 16l5-5 4 4 3-3 6 6|M15.5 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z',
 };
 function icono(nombre) {
   return s('svg', { class: 'ico', viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' },
@@ -205,6 +216,8 @@ function avatar(c, grande = false) {
 // ------------------------------------------------------------------
 async function iniciar() {
   if (!datos) return pantallaSinConfigurar();
+  // Al volver del mail de confirmación, Supabase deja datos en la dirección: se borran.
+  if (/access_token|error_description|type=signup/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
   try {
     const ses = await datos.sesion();
     if (!ses) return pantallaLogin();
@@ -218,6 +231,7 @@ async function iniciar() {
     if (!yo) return pantallaSinPermiso();
     if (!sessionStorage.getItem('vy-ingreso')) { sessionStorage.setItem('vy-ingreso', '1'); datos.registrarIngreso().catch(() => {}); }
     vigilarInactividad();
+    if (!yo.perfil_completo) return pantallaBienvenida();
     armarMarco();
     ruta();
   } catch (e) {
@@ -249,7 +263,46 @@ function pantallaLogin(msg) {
     try { await datos.iniciarSesion(String(fd.get('email')).trim(), String(fd.get('password'))); await iniciar(); }
     catch (e) { error.textContent = e.message; btn.disabled = false; }
   });
-  poner($app, caja(h('h1', { text: 'Panel Vectyo' }), h('p', { class: 'suave', text: 'Entrá con tu mail y contraseña.' }), form));
+  const registro = cfg.registroAbierto === false ? null :
+    h('p', { class: 'chico suave pie-login' }, '¿No tenés cuenta? ', h('button', { class: 'link', type: 'button', text: 'Crear cuenta', onclick: () => pantallaRegistro() }));
+  poner($app, caja(h('h1', { text: 'Panel Vectyo' }), h('p', { class: 'suave', text: 'Entrá con tu mail y contraseña.' }), form, registro));
+}
+
+function pantallaRegistro() {
+  const error = h('p', { class: 'error' });
+  const btn = h('button', { class: 'btn ancho', type: 'submit', text: 'Crear cuenta' });
+  const pass = inp('password', '', { type: 'password', autocomplete: 'new-password', required: true, minlength: 12 });
+  const pass2 = inp('password2', '', { type: 'password', autocomplete: 'new-password', required: true });
+  const form = h('form', { novalidate: true },
+    campo('Tu nombre', inp('nombre', '', { autocomplete: 'name', required: true, maxlength: 80 })),
+    campo('Mail', inp('email', '', { type: 'email', autocomplete: 'email', required: true, inputmode: 'email' })),
+    campo('Contraseña (mínimo 12, con letras, números y un símbolo)', pass),
+    campo('Repetí la contraseña', pass2),
+    h('p', { class: 'chico suave nota-icono' }, icono('candado'), h('span', { text: 'Después vas a activar el código de seguridad en tu celular. Sin ese código nadie entra a tu cuenta, aunque sepa la contraseña.' })),
+    error, btn,
+    h('button', { class: 'btn sec ancho', type: 'button', text: 'Ya tengo cuenta', onclick: () => pantallaLogin() }));
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const fd = new FormData(form);
+    const nombre = String(fd.get('nombre')).trim(), email = String(fd.get('email')).trim(), clave = String(fd.get('password'));
+    error.textContent = '';
+    if (!nombre || !email || !clave) { error.textContent = 'Completá los campos obligatorios.'; return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { error.textContent = 'Revisá el mail.'; return; }
+    if (clave.length < 12) { error.textContent = 'La contraseña tiene que tener al menos 12 caracteres.'; pass.focus(); return; }
+    if (!/[a-z]/.test(clave) || !/[A-Z]/.test(clave) || !/\d/.test(clave) || !/[^a-zA-Z0-9]/.test(clave)) { error.textContent = 'La contraseña tiene que mezclar minúsculas, mayúsculas, números y al menos un símbolo (por ejemplo ! o #).'; pass.focus(); return; }
+    if (clave !== fd.get('password2')) { error.textContent = 'Las dos contraseñas no coinciden.'; pass2.focus(); return; }
+    btn.disabled = true;
+    try {
+      const r = await datos.registrarse(nombre, email, clave);
+      if (r.necesitaConfirmar) {
+        poner($app, caja(h('h1', { text: 'Revisá tu mail' }),
+          h('p', { class: 'suave', text: `Si ${email} no tenía cuenta, te mandamos un link para confirmarla. Tocalo y después entrá con tu mail y contraseña.` }),
+          h('p', { class: 'chico suave bloque-arriba', text: 'Si no llega en unos minutos, mirá en spam o promociones.' }),
+          h('form', {}, h('button', { class: 'btn ancho', type: 'button', text: 'Ir a entrar', onclick: () => pantallaLogin() }))));
+      } else await iniciar();
+    } catch (e) { error.textContent = e.message; btn.disabled = false; }
+  });
+  poner($app, caja(h('h1', { text: 'Crear cuenta' }), h('p', { class: 'suave', text: 'Lo que cargues como personal lo ven solo vos y el administrador del panel.' }), form));
 }
 
 async function pantallaMfa(mfa) {
@@ -327,8 +380,9 @@ function vigilarInactividad() {
 // ------------------------------------------------------------------
 let $main;
 function secciones() {
-  const l = [['#/clientes', 'Clientes', 'clientes'], ['#/finanzas', 'Finanzas', 'finanzas'], ['#/mapa', 'Mapa', 'mapa']];
-  if (esAdmin()) l.push(['#/registro', 'Registro', 'registro']);
+  const l = [['#/clientes', 'Clientes', 'clientes'], ['#/finanzas', 'Finanzas', 'finanzas']];
+  if (esAdmin()) l.push(['#/mapa', 'Mapa', 'mapa'], ['#/registro', 'Registro', 'registro']);
+  l.push(['#/perfil', 'Perfil', 'perfil']);
   return l;
 }
 function armarMarco() {
@@ -340,7 +394,8 @@ function armarMarco() {
     h('header', { class: 'barra' },
       h('a', { class: 'marca', href: '#/clientes' }, h('img', { src: 'isotipo-ciruela.svg', alt: '' }), 'VECTYO'),
       nav,
-      h('div', { class: 'usuario' }, h('span', { class: 'quien suave chico', text: yo.nombre }),
+      h('div', { class: 'usuario' },
+        h('a', { class: 'yo-mini', href: '#/perfil', title: 'Mi perfil' }, avatarPerfil(yo, 'mini'), h('span', { class: 'quien suave chico', text: yo.nombre })),
         h('button', { class: 'btn sec mini', onclick: () => salir() }, icono('salir'), 'Salir'))),
     MODO_DEMO ? h('div', { class: 'demo', text: 'Modo demo: datos inventados, solo en esta compu. Nada se guarda.' }) : null,
     $main,
@@ -366,8 +421,9 @@ async function ruta() {
   try {
     if (seccion === 'cliente' && id) await vistaFicha(decodeURIComponent(id));
     else if (['finanzas', 'plata', 'analytics'].includes(seccion)) await vistaFinanzas();
-    else if (seccion === 'mapa') await vistaMapa();
+    else if (seccion === 'mapa' && esAdmin()) await vistaMapa();
     else if (seccion === 'registro' && esAdmin()) await vistaRegistro();
+    else if (seccion === 'perfil') await vistaPerfil();
     else await vistaClientes();
   } catch (e) {
     console.error(e);
@@ -394,36 +450,253 @@ function hojaNuevo() {
 }
 
 // ------------------------------------------------------------------
+// Perfil de cuenta
+// ------------------------------------------------------------------
+const limpiarArroba = (u, dominio) => String(u || '').trim().replace(dominio, '').replace(/^@/, '').replace(/[/?#].*$/, '');
+const REDES = [
+  ['instagram', 'Instagram', '@usuario', urlInstagram],
+  ['tiktok', 'TikTok', '@usuario', (u) => { const x = limpiarArroba(u, /^https?:\/\/(www\.)?tiktok\.com\/@?/i); return x ? 'https://www.tiktok.com/@' + encodeURIComponent(x) : null; }],
+  ['linkedin', 'LinkedIn', 'Link a tu perfil', (u) => { const x = String(u || '').trim(); if (!x) return null; return /^https:\/\/([a-z]+\.)?linkedin\.com\//i.test(x) ? x : 'https://www.linkedin.com/in/' + encodeURIComponent(limpiarArroba(x, /^https?:\/\/[^/]+\/(in\/)?/i)); }],
+  ['x', 'X (Twitter)', '@usuario', (u) => { const x = limpiarArroba(u, /^https?:\/\/(www\.)?(x|twitter)\.com\//i); return x ? 'https://x.com/' + encodeURIComponent(x) : null; }],
+  ['web', 'Web', 'tusitio.com', urlWeb],
+  ['whatsapp', 'WhatsApp', 'Ej: 2664639451', urlWhatsapp],
+];
+function edad(iso) {
+  if (!iso) return null;
+  const [a, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+  const hoy = new Date();
+  let e = hoy.getFullYear() - a;
+  if (hoy.getMonth() + 1 < m || (hoy.getMonth() + 1 === m && hoy.getDate() < d)) e--;
+  return e;
+}
+function avatarPerfil(p, tam = '') {
+  const clase = 'avatar' + (tam ? ' ' + tam : '');
+  const ini = h('div', { class: clase, text: iniciales(p.nombre), 'aria-hidden': 'true' });
+  if (!p.foto_path) return ini;
+  const img = h('img', { class: clase, alt: '' });
+  datos.urlImagenPerfil(p.foto_path).then((u) => { if (u) { img.src = u; ini.replaceWith(img); } }).catch(() => {});
+  return ini;
+}
+function bannerPerfil(p) {
+  const b = h('div', { class: 'banner', 'aria-hidden': 'true' });
+  if (p.banner_path) {
+    const img = h('img', { alt: '' });
+    datos.urlImagenPerfil(p.banner_path).then((u) => { if (u) { img.src = u; b.append(img); } }).catch(() => {});
+  }
+  return b;
+}
+async function cambiarImagen(tipo) {
+  const [f] = await elegirArchivo('image/jpeg,image/png,image/webp');
+  if (!f) return false;
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(f.type)) { aviso('Usá una imagen JPG, PNG o WebP.', true); return false; }
+  if (f.size > 5 * 1024 * 1024) { aviso('La imagen pesa más de 5 MB. Probá con una más chica.', true); return false; }
+  const nuevo = await intentar(() => datos.subirImagenPerfil(yo, tipo, f), tipo === 'banner' ? 'Banner actualizado.' : 'Foto actualizada.');
+  yo = { ...yo, ...nuevo };
+  return true;
+}
+// Lee del formulario solo los campos del perfil que están en él, y los valida.
+function camposPerfil(form) {
+  const fd = new FormData(form), out = {};
+  for (const k of ['nombre', 'usuario', 'descripcion', 'fecha_nacimiento', ...REDES.map((r) => r[0])]) {
+    if (!form.elements[k]) continue;
+    out[k] = String(fd.get(k) ?? '').trim() || null;
+  }
+  if (form.elements.mostrar_edad) out.mostrar_edad = form.elements.mostrar_edad.checked;
+  if (out.usuario) out.usuario = out.usuario.replace(/^@/, '').toLowerCase();
+  if ('nombre' in out && !out.nombre) throw new Error('Poné tu nombre.');
+  if ('usuario' in out && !out.usuario) throw new Error('Elegí tu @usuario.');
+  if (out.usuario && !/^[a-z0-9._]{3,30}$/.test(out.usuario)) throw new Error('El @usuario va de 3 a 30 caracteres: letras minúsculas, números, punto o guion bajo.');
+  if (out.descripcion && out.descripcion.length > 160) throw new Error('La descripción puede tener hasta 160 caracteres.');
+  if (out.fecha_nacimiento) { const e = edad(out.fecha_nacimiento); if (!(e >= 13 && e <= 120)) throw new Error('La fecha de nacimiento no es válida (hay que tener al menos 13 años).'); }
+  return out;
+}
+const campoUsuario = (v) => h('div', { class: 'con-arroba' }, h('span', { text: '@', 'aria-hidden': 'true' }),
+  inp('usuario', v, { required: true, maxlength: 30, autocapitalize: 'none', autocomplete: 'off', spellcheck: 'false', placeholder: 'tunombre', 'aria-label': 'Usuario' }));
+function campoDescripcion(v) {
+  const t = area('descripcion', v, { maxlength: 160, rows: 3, placeholder: 'Ej: Diseño webs para comercios de San Luis.' });
+  const cuenta = h('span', { class: 'cuenta chico suave' });
+  const act = () => { cuenta.textContent = `${t.value.length}/160`; };
+  t.addEventListener('input', act); act();
+  return h('div', { class: 'con-cuenta' }, t, cuenta);
+}
+const camposSobreVos = (p) => [
+  campo('Descripción corta', campoDescripcion(p.descripcion), 'entera'),
+  campo('Fecha de nacimiento', inp('fecha_nacimiento', p.fecha_nacimiento, { type: 'date', max: hoyISO(), min: '1900-01-01' })),
+  h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'mostrar_edad', checked: p.mostrar_edad !== false }), 'Mostrar mi edad en el perfil'),
+];
+const camposRedes = (p) => REDES.map(([k, t, ph]) => campo(t, inp(k, p[k], { placeholder: ph, maxlength: k === 'whatsapp' ? 40 : 200, ...(k === 'whatsapp' ? { inputmode: 'tel' } : { autocapitalize: 'none', spellcheck: 'false' }) })));
+
+// Paso a paso obligatorio la primera vez que se entra (también para las cuentas viejas).
+function pantallaBienvenida(paso = 1) {
+  const TOTAL = 4;
+  const error = h('p', { class: 'error' });
+  const progreso = h('div', { class: 'pasos', 'aria-hidden': 'true' }, Array.from({ length: TOTAL }, (_, i) => h('span', { class: i < paso ? 'hecho' : '' })));
+  const ir = (n) => pantallaBienvenida(n);
+  const terminar = () => { armarMarco(); location.hash = '#/perfil'; ruta(); };
+  let titulo, texto, cuerpo, opcional = false;
+  if (paso === 1) {
+    titulo = 'Armemos tu perfil';
+    texto = 'Así te van a reconocer las personas con las que compartas clientes. Lo podés cambiar cuando quieras.';
+    cuerpo = h('div', { class: 'grilla-form' },
+      campo('Nombre y apellido', inp('nombre', yo.nombre, { required: true, maxlength: 80, autocomplete: 'name' }), 'entera'),
+      campo('Tu @usuario', campoUsuario(yo.usuario), 'entera'),
+      h('p', { class: 'chico suave entera', text: 'Con tu @usuario te van a poder sumar a un cliente compartido. Va en minúscula, sin espacios.' }));
+  } else if (paso === 2) {
+    titulo = 'Tu foto y tu banner';
+    texto = 'Una foto donde se te vea bien la cara y un banner que cuente algo de vos o de tu trabajo.';
+    opcional = true;
+    const subir = (tipo) => async () => { if (await cambiarImagen(tipo).catch(() => false)) ir(2); };
+    cuerpo = h('div', {},
+      h('div', { class: 'perfil-previa' }, bannerPerfil(yo), avatarPerfil(yo, 'grande')),
+      h('div', { class: 'acciones izq' },
+        h('button', { class: 'btn sec', type: 'button', onclick: subir('foto') }, icono('camara'), yo.foto_path ? 'Cambiar foto' : 'Subir foto'),
+        h('button', { class: 'btn sec', type: 'button', onclick: subir('banner') }, icono('imagen'), yo.banner_path ? 'Cambiar banner' : 'Subir banner')),
+      h('p', { class: 'chico suave bloque-arriba', text: 'JPG, PNG o WebP de hasta 5 MB. El banner se ve mejor horizontal (por ejemplo, 1500 × 500).' }));
+  } else if (paso === 3) {
+    titulo = 'Contanos de vos';
+    texto = 'Una línea que diga qué hacés. La edad es opcional y la podés ocultar.';
+    opcional = true;
+    cuerpo = h('div', { class: 'grilla-form' }, camposSobreVos(yo));
+  } else {
+    titulo = 'Tus redes';
+    texto = 'Completá las que uses. Se muestran como links en tu perfil.';
+    opcional = true;
+    cuerpo = h('div', { class: 'grilla-form' }, camposRedes(yo));
+  }
+  const ultimo = paso === TOTAL;
+  const btn = h('button', { class: 'btn', type: 'submit', text: ultimo ? 'Terminar' : 'Siguiente' });
+  const form = h('form', { novalidate: true }, cuerpo, error,
+    h('div', { class: 'acciones' },
+      paso > 1 ? h('button', { class: 'btn sec', type: 'button', text: 'Atrás', onclick: () => ir(paso - 1) }) : null,
+      opcional && !ultimo ? h('button', { class: 'btn sec', type: 'button', text: 'Después', onclick: () => ir(paso + 1) }) : null,
+      btn));
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    error.textContent = '';
+    btn.disabled = true;
+    try {
+      const campos = paso === 2 ? {} : camposPerfil(form);
+      if (ultimo) campos.perfil_completo = true;
+      if (Object.keys(campos).length) yo = { ...yo, ...await datos.guardarPerfil(campos) };
+      if (ultimo) { terminar(); aviso('¡Listo! Tu perfil quedó armado.'); } else ir(paso + 1);
+    } catch (e) { error.textContent = e.message; btn.disabled = false; }
+  });
+  poner($app, h('div', { class: 'login' }, h('div', { class: 'panel bienvenida' },
+    progreso, h('p', { class: 'chico suave paso', text: `Paso ${paso} de ${TOTAL}` }),
+    h('h1', { text: titulo }), h('p', { class: 'suave', text: texto }), form,
+    h('p', { class: 'pie-login' }, h('button', { class: 'link chico', type: 'button', text: 'Salir', onclick: () => salir() })))));
+  const primero = form.querySelector('input:not([type=checkbox]), textarea');
+  if (primero && matchMedia('(min-width: 700px)').matches) primero.focus();
+}
+
+function formPerfil() {
+  const grupo = (titulo, ...campos) => h('fieldset', { class: 'grupo' }, h('legend', { text: titulo }), h('div', { class: 'grilla-form' }, ...campos));
+  const cuerpo = h('div', { class: 'grupos' },
+    grupo('Quién sos',
+      campo('Nombre y apellido *', inp('nombre', yo.nombre, { required: true, maxlength: 80 })),
+      campo('@usuario *', campoUsuario(yo.usuario))),
+    grupo('Sobre vos', ...camposSobreVos(yo)),
+    grupo('Redes', ...camposRedes(yo)));
+  return dialogo({
+    titulo: 'Editar perfil', cuerpo,
+    alGuardar: async (_fd, form) => { yo = { ...yo, ...await datos.guardarPerfil(camposPerfil(form)) }; aviso('Perfil guardado.'); return yo; },
+  });
+}
+
+async function vistaPerfil() {
+  const recargar = () => { armarMarco(); ruta(); };
+  const e = yo.mostrar_edad !== false ? edad(yo.fecha_nacimiento) : null;
+  const redes = REDES.map(([k, t, , url]) => { const u = url(yo[k]); return u ? h('a', { class: 'enlace', href: u, target: '_blank', rel: 'noopener noreferrer', text: t }) : null; }).filter(Boolean);
+  const ROL = { admin: 'Administrador', equipo: 'Equipo Vectyo', usuario: 'Cuenta personal' };
+  const subir = (tipo) => async () => { if (await cambiarImagen(tipo).catch(() => false)) recargar(); };
+  poner($main,
+    h('div', { class: 'encabezado' }, h('h1', { text: 'Mi perfil' }),
+      h('button', { class: 'btn', onclick: async () => { if (await formPerfil()) recargar(); } }, icono('editar'), 'Editar perfil')),
+    h('section', { class: 'perfil vidrio' },
+      h('div', { class: 'perfil-banner' }, bannerPerfil(yo),
+        h('button', { class: 'btn sec mini cambiar-banner', onclick: subir('banner') }, icono('imagen'), 'Cambiar banner')),
+      h('div', { class: 'perfil-cuerpo' },
+        h('div', { class: 'foto-cambiar' }, avatarPerfil(yo, 'grande'),
+          h('button', { class: 'btn sec btn-icono', 'aria-label': 'Cambiar foto', title: 'Cambiar foto', onclick: subir('foto') }, icono('camara'))),
+        h('div', { class: 'perfil-info' },
+          h('h2', { class: 'perfil-nombre', text: yo.nombre }),
+          h('p', { class: 'suave' }, yo.usuario ? '@' + yo.usuario : 'Sin @usuario', e != null ? ` · ${e} años` : '', ' ', h('span', { class: 'chip', text: ROL[yo.rol] || yo.rol })),
+          h('p', { class: 'texto-largo' + (yo.descripcion ? '' : ' suave'), text: yo.descripcion || 'Todavía no escribiste una descripción.' }),
+          redes.length ? h('div', { class: 'enlaces' }, redes) : h('p', { class: 'chico suave', text: 'Sin redes cargadas.' })))),
+    h('section', { class: 'panel' }, h('h2', {}, icono('candado'), 'Quién ve tu perfil'),
+      h('p', { class: 'suave', text: 'Tu perfil lo ven las personas con las que compartas un cliente y el administrador del panel. No es público ni aparece en la web.' })),
+    null);
+}
+
+// ------------------------------------------------------------------
 // Clientes
 // ------------------------------------------------------------------
+// Etiqueta de privacidad de un cliente (tarjeta y ficha)
+function chipTipo(c, nombres = {}) {
+  if (c.tipo === 'compartido') {
+    const n = (c.miembros_ids || []).length;
+    return h('span', { class: 'chip tipo compartido' }, icono('clientes'), 'Compartido' + (n > 1 ? ' · ' + n : ''));
+  }
+  const ajeno = !soyDueno(c);
+  return h('span', { class: 'chip tipo personal' + (ajeno ? ' ajeno' : '') }, icono('candado'), ajeno ? 'Personal de ' + (nombres[c.dueno_id] || 'otra cuenta') : 'Personal');
+}
+
 async function vistaClientes() {
-  const clientes = await datos.listarClientes();
+  const [todos, mias] = await Promise.all([datos.listarClientes(), datos.listarMisTareas().catch(() => [])]);
+  // El admin también recibe los clientes de las demás cuentas: se muestran solo si lo pide.
+  const hayAjenos = esAdmin() && todos.some((c) => !esMio(c));
+  const nombres = hayAjenos ? Object.fromEntries((await datos.listarPerfiles()).map((p) => [p.id, p.nombre])) : {};
   const buscar = inp('q', '', { type: 'search', placeholder: 'Buscar por nombre, rubro o ciudad', 'aria-label': 'Buscar' });
   const etapa = sel('etapa', [['', 'Todas las etapas'], ...ETAPAS], '', { 'aria-label': 'Etapa' });
+  const tipo = segmento('tipo-vista', [['', 'Todos'], ['personal', 'Personales'], ['compartido', 'Compartidos']], sessionStorage.getItem('vy-tipo') || '');
+  const verAjenos = hayAjenos ? h('input', { type: 'checkbox', checked: sessionStorage.getItem('vy-ajenos') === '1' }) : null;
   const grilla = h('div', { class: 'tarjetas' });
+  const cuenta = h('span', { class: 'suave chico' });
   function pintar() {
     const q = buscar.value.trim().toLowerCase();
-    const lista = clientes.filter((c) => (!etapa.value || c.etapa === etapa.value) &&
+    const t = tipo.querySelector('input:checked')?.value || '';
+    sessionStorage.setItem('vy-tipo', t);
+    if (verAjenos) sessionStorage.setItem('vy-ajenos', verAjenos.checked ? '1' : '0');
+    const base = todos.filter((c) => esMio(c) || verAjenos?.checked);
+    const lista = base.filter((c) => (!etapa.value || c.etapa === etapa.value) && (!t || c.tipo === t) &&
       (!q || [c.nombre, c.rubro, c.ciudad, c.contacto].join(' ').toLowerCase().includes(q)));
-    poner(grilla, ...lista.map((c) => h('a', { class: 'tarjeta', href: '#/cliente/' + encodeURIComponent(c.id) },
-      avatar(c), h('span', { class: 'nombre', text: c.nombre }), h('span', { class: 'chip etapa-' + c.etapa, text: nombreEtapa(c.etapa) }))));
-    if (!lista.length) poner(grilla, h('p', { class: 'vacio', text: clientes.length ? 'No hay clientes con ese filtro.' : 'Todavía no hay clientes. Tocá "Nuevo cliente".' }));
+    cuenta.textContent = base.length + (base.length === 1 ? ' cliente' : ' clientes');
+    poner(grilla, ...lista.map((c) => h('a', { class: 'tarjeta' + (esMio(c) ? '' : ' ajena'), href: '#/cliente/' + encodeURIComponent(c.id) },
+      avatar(c), h('span', { class: 'nombre', text: c.nombre }), h('span', { class: 'chip etapa-' + c.etapa, text: nombreEtapa(c.etapa) }), chipTipo(c, nombres))));
+    if (!lista.length) poner(grilla, h('p', { class: 'vacio', text: base.length ? 'No hay clientes con ese filtro.' : 'Todavía no tenés clientes. Tocá "Nuevo cliente". Si alguien te suma a un cliente compartido, también aparece acá.' }));
   }
   buscar.addEventListener('input', pintar);
   etapa.addEventListener('change', pintar);
+  tipo.addEventListener('change', pintar);
+  verAjenos?.addEventListener('change', pintar);
   pintar();
-  poner($main, 
-    h('div', { class: 'encabezado' }, h('h1', { text: 'Clientes' }), h('span', { class: 'suave chico', text: clientes.length + ' en total' }),
+  poner($main,
+    h('div', { class: 'encabezado' }, h('h1', { text: 'Clientes' }), cuenta,
       h('button', { class: 'btn', onclick: async () => { const c = await formCliente(); if (c) location.hash = '#/cliente/' + c.id; } }, icono('mas'), 'Nuevo cliente')),
-    h('div', { class: 'filtros' }, buscar, etapa),
+    panelMisTareas(mias),
+    h('div', { class: 'filtros' }, tipo, buscar, etapa,
+      verAjenos ? h('label', { class: 'check chico' }, verAjenos, 'Ver también los de otras cuentas (admin)') : null),
     grilla);
 }
 
-function formCliente(c = {}) {
+function formCliente(c = {}, { integrantes = [] } = {}) {
   const servs = new Set(c.servicios || []);
+  const nuevo = !c.id;
+  const notaTipo = h('p', { class: 'chico suave entera' });
+  const tipoSeg = nuevo ? segmento('tipo', [['personal', 'Personal'], ['compartido', 'Compartido']], 'personal') : null;
+  const explicarTipo = () => {
+    const t = tipoSeg.querySelector('input:checked')?.value;
+    notaTipo.textContent = t === 'compartido'
+      ? 'Un trato con otras personas: después de guardarlo sumás a los integrantes por su @usuario o mail. Lo ven ustedes y el administrador del panel.'
+      : 'Es tuyo: lo ves solo vos y el administrador del panel. Más adelante lo podés convertir en compartido.';
+  };
+  if (tipoSeg) { tipoSeg.addEventListener('change', explicarTipo); explicarTipo(); }
+  // Responsable: quien está a cargo. En un compartido se elige entre los integrantes.
+  const opcionesResp = [...new Set([...(integrantes.length ? integrantes.map((x) => x.nombre) : [yo.nombre]), c.responsable].filter(Boolean))];
   const extras = [...servs].filter((x) => !SERVICIOS.includes(x));
   const grupo = (titulo, ...campos) => h('fieldset', { class: 'grupo' }, h('legend', { text: titulo }), h('div', { class: 'grilla-form' }, ...campos));
   const cuerpo = h('div', { class: 'grupos' },
+    nuevo ? grupo('¿De quién es?', h('div', { class: 'entera' }, tipoSeg), notaTipo) : null,
     grupo('Negocio',
       campo('Nombre del negocio *', inp('nombre', c.nombre, { required: true, maxlength: 200 }), 'entera'),
       campo('Rubro', inp('rubro', c.rubro, { placeholder: 'Ej: Panadería' })),
@@ -437,7 +710,7 @@ function formCliente(c = {}) {
       campo('Web', inp('web', c.web, { placeholder: 'negocio.com' }), 'entera')),
     grupo('Seguimiento',
       campo('Etapa', sel('etapa', ETAPAS, c.etapa || 'consulta')),
-      campo('Responsable', sel('responsable', ['Luciano', 'Juan'], c.responsable || yo.nombre.split(' ')[0])),
+      campo('Responsable', sel('responsable', opcionesResp, c.responsable || yo.nombre)),
       campo('Próxima acción', inp('proxima_accion', c.proxima_accion, { placeholder: 'Qué hay que hacer' })),
       campo('Para cuándo', inp('fecha_proxima_accion', c.fecha_proxima_accion, { type: 'date' }))),
     grupo('Servicios que le hacemos',
@@ -459,6 +732,7 @@ function formCliente(c = {}) {
         fila[k] = v || null;
       }
       if (c.id) fila.id = c.id;
+      else fila.tipo = fd.get('tipo') === 'compartido' ? 'compartido' : 'personal';
       const r = await datos.guardarCliente(fila);
       aviso('Cliente guardado.');
       return r;
@@ -471,7 +745,13 @@ async function vistaFicha(id) {
     datos.obtenerCliente(id), datos.listarHistorial(id), datos.listarAcuerdos(id),
     datos.listarMovimientos({ clienteId: id }), datos.listarArchivos(id),
   ]);
-  if (!c) throw new Error('No se encontró ese cliente.');
+  if (!c) throw new Error('No se encontró ese cliente, o no tenés acceso.');
+  const compartido = c.tipo === 'compartido';
+  const [integrantes, tareas, feed] = compartido
+    ? await Promise.all([datos.listarIntegrantes(id), datos.listarTareas(id), datos.listarFeed(id)])
+    : [[], [], []];
+  const nombreDueno = soyDueno(c) ? yo.nombre : (integrantes.find((x) => x.usuario_id === c.dueno_id)?.nombre
+    || (esAdmin() ? (await datos.listarPerfiles()).find((p) => p.id === c.dueno_id)?.nombre : null) || 'otra cuenta');
   const recargar = () => ruta();
   const nuevoPago = async () => { if (await formMovimiento({ tipo: 'ingreso', cliente_id: c.id, categoria: 'Pago de proyecto' }, { cliente: c, acuerdos })) recargar(); };
   const subirPdf = async () => {
@@ -496,7 +776,7 @@ async function vistaFicha(id) {
     urlWhatsapp(c.whatsapp) && h('a', { class: 'btn verde', href: urlWhatsapp(c.whatsapp), target: '_blank', rel: 'noopener noreferrer' }, icono('whatsapp'), 'WhatsApp'),
     h('button', { class: 'btn', onclick: nuevoPago }, icono('pago'), 'Cargar pago'),
     h('button', { class: 'btn sec', onclick: subirPdf }, icono('subir'), 'Subir PDF'),
-    h('button', { class: 'btn sec', onclick: async () => { if (await formCliente(c)) recargar(); } }, icono('editar'), 'Editar'),
+    h('button', { class: 'btn sec', onclick: async () => { if (await formCliente(c, { integrantes })) recargar(); } }, icono('editar'), 'Editar'),
   ];
   const enlaces = [
     urlInstagram(c.instagram) && h('a', { class: 'enlace', href: urlInstagram(c.instagram), target: '_blank', rel: 'noopener noreferrer', text: 'Instagram' }),
@@ -506,13 +786,13 @@ async function vistaFicha(id) {
   const cab = h('div', { class: 'ficha-cab vidrio' }, fotoBox,
     h('div', { class: 'info' },
       h('h1', { text: c.nombre }),
-      h('div', {}, h('span', { class: 'chip etapa-' + c.etapa, text: nombreEtapa(c.etapa) }), ' ',
+      h('div', {}, chipTipo(c, { [c.dueno_id]: nombreDueno }), ' ', h('span', { class: 'chip etapa-' + c.etapa, text: nombreEtapa(c.etapa) }), ' ',
         (c.servicios || []).map((sv) => [h('span', { class: 'chip', text: sv }), ' '])),
       h('div', { class: 'botones' }, links),
       enlaces.length ? h('div', { class: 'enlaces' }, enlaces) : null,
       h('div', { class: 'botones' },
-        esAdmin() && h('button', { class: 'btn peligro mini borrar-cliente', onclick: async () => {
-          if (!await confirmar('¿Borrar ' + c.nombre + '?', 'Se borra la ficha con su historial, tratos y PDF. Los pagos quedan en Finanzas, sin cliente. No se puede deshacer.')) return;
+        puedoBorrarEn(c) && h('button', { class: 'btn peligro mini borrar-cliente', onclick: async () => {
+          if (!await confirmar('¿Borrar ' + c.nombre + '?', 'Se borra la ficha con su historial, tratos y PDF' + (c.tipo === 'compartido' ? ', también para los demás integrantes' : '') + '. Los pagos quedan en Finanzas, sin cliente. No se puede deshacer.')) return;
           await intentar(() => datos.borrarCliente(c), 'Cliente borrado.');
           location.hash = '#/clientes';
         } }, icono('borrar'), 'Borrar'))));
@@ -532,7 +812,7 @@ async function vistaFicha(id) {
       fila('Rubro', c.rubro), fila('Ciudad', c.ciudad), fila('Nos conoció por', c.origen), fila('Responsable', c.responsable),
       fila('Próxima acción', c.proxima_accion ? [c.proxima_accion, c.fecha_proxima_accion ? h('span', { class: vencida ? 'debe' : 'suave', text: ' · ' + fechaLinda(c.fecha_proxima_accion) + (vencida ? ' (vencida)' : '') }) : null] : null),
       fila('Alta', fechaLinda(c.creado_en)),
-      fila('Mapa de la web', [c.mapa_publicar ? `Se muestra en ${[c.mapa_ciudad, c.mapa_pais].filter(Boolean).join(', ')} ` : 'No se muestra ',
+      esAdmin() && fila('Mapa de la web', [c.mapa_publicar ? `Se muestra en ${[c.mapa_ciudad, c.mapa_pais].filter(Boolean).join(', ')} ` : 'No se muestra ',
         h('a', { class: 'btn sec mini', href: '#/mapa?cliente=' + encodeURIComponent(c.id) }, icono('pin'), c.mapa_publicar ? 'Mover' : 'Ubicar en el mapa')])));
 
   // Tratos económicos
@@ -560,7 +840,7 @@ async function vistaFicha(id) {
         h('p', { class: 'chico' }, 'Cobrado ' + plata(cobrado, a.moneda) + ' · ', detalle)),
       h('div', { class: 'acciones-li' },
         h('button', { class: 'btn sec mini', onclick: async () => { if (await formAcuerdo(c, a)) recargar(); } }, icono('editar'), 'Editar'),
-        esAdmin() && h('button', { class: 'btn peligro mini btn-icono', 'aria-label': 'Borrar trato', title: 'Borrar trato', onclick: async () => {
+        puedoBorrarEn(c) && h('button', { class: 'btn peligro mini btn-icono', 'aria-label': 'Borrar trato', title: 'Borrar trato', onclick: async () => {
           if (!await confirmar('¿Borrar el trato?', 'Se borra "' + a.concepto + '". Los pagos ya cargados quedan.')) return;
           await intentar(() => datos.borrarAcuerdo(a.id), 'Trato borrado.'); recargar();
         } }, icono('borrar'))));
@@ -591,7 +871,7 @@ async function vistaFicha(id) {
         try { const u = await datos.urlArchivo(a.path); if (w) { w.opener = null; w.location.href = u; } else location.href = u; }
         catch (e) { if (w) w.close(); aviso(e.message, true); }
       } }),
-      esAdmin() && h('button', { class: 'btn peligro mini', text: 'Borrar', 'aria-label': 'Borrar ' + a.nombre, onclick: async () => {
+      puedoBorrarEn(c) && h('button', { class: 'btn peligro mini', text: 'Borrar', 'aria-label': 'Borrar ' + a.nombre, onclick: async () => {
         if (!await confirmar('¿Borrar el PDF?', 'Se borra "' + a.nombre + '" del panel. No se puede deshacer.')) return;
         await intentar(() => datos.borrarArchivo(a), 'PDF borrado.'); recargar();
       } })))) :
@@ -611,7 +891,7 @@ async function vistaFicha(id) {
   const pHistorial = h('section', { class: 'panel' }, h('h2', { text: 'Historial' }), formH,
     historial.length ? h('ul', { class: 'lista bloque' }, historial.map((x) => h('li', {},
       h('span', { class: 'fecha', text: fechaLinda(x.fecha) }), h('div', { class: 'cuerpo' }, h('p', { class: 'texto-largo', text: x.texto })),
-      esAdmin() && h('button', { class: 'btn peligro mini', text: '×', 'aria-label': 'Borrar entrada', onclick: async () => {
+      puedoBorrarEn(c) && h('button', { class: 'btn peligro mini', text: '×', 'aria-label': 'Borrar entrada', onclick: async () => {
         if (!await confirmar('¿Borrar esta entrada?', x.texto.slice(0, 140))) return;
         await intentar(() => datos.borrarHistorial(x.id)); recargar();
       } })))) : h('p', { class: 'suave bloque', text: 'Sin novedades cargadas.' }));
@@ -621,9 +901,280 @@ async function vistaFicha(id) {
   poner($main, 
     h('a', { class: 'volver', href: '#/clientes' }, icono('volver'), 'Clientes'),
     cab,
+    compartido ? h('div', { class: 'trabajo-grupo' },
+      panelAporte(tareas, integrantes),
+      h('div', { class: 'ficha-columnas' }, panelTareas(c, integrantes, tareas, recargar), panelFeed(feed, integrantes))) : null,
     h('div', { class: 'ficha-columnas' },
-      h('div', { class: 'columna' }, pPersona, pDatos, pNotas),
+      h('div', { class: 'columna' }, panelPrivacidad(c, integrantes, nombreDueno, recargar), pPersona, pDatos, pNotas),
       h('div', { class: 'columna' }, pPlata, pArchivos, pHistorial)));
+}
+
+// Privacidad del cliente: quién lo ve, integrantes y cambio personal ↔ compartido.
+function panelPrivacidad(c, integrantes, nombreDueno, recargar) {
+  const dueno = soyDueno(c);
+  const cambiarTipo = async (tipo) => {
+    const ok = tipo === 'compartido'
+      ? await dialogo({ titulo: 'Convertir en compartido', textoGuardar: 'Convertir',
+          cuerpo: h('p', { class: 'suave', text: 'Vas a poder sumar integrantes por su @usuario o mail. Van a ver y trabajar todo el cliente: datos, historial, tratos, pagos y PDF. Vos seguís siendo el dueño.' }),
+          alGuardar: () => datos.guardarCliente({ id: c.id, tipo: 'compartido' }) })
+      : await dialogo({ titulo: 'Volver a personal', textoGuardar: 'Volver a personal', peligro: true,
+          cuerpo: h('p', { class: 'suave', text: `Los demás integrantes (${Math.max(0, integrantes.length - 1)}) dejan de verlo en el momento. Lo que cargaron queda en la ficha.` }),
+          alGuardar: () => datos.guardarCliente({ id: c.id, tipo: 'personal' }) });
+    if (ok) { aviso(tipo === 'compartido' ? 'Ahora es compartido. Sumá a los integrantes.' : 'Volvió a ser personal.'); recargar(); }
+  };
+  if (c.tipo !== 'compartido') {
+    return h('section', { class: 'panel privacidad' }, h('h2', {}, icono('candado'), 'Personal'),
+      h('p', { class: 'suave', text: dueno ? 'Este cliente lo ves solo vos y el administrador del panel.' : `Es un cliente personal de ${nombreDueno}. Lo ves porque sos administrador del panel.` }),
+      dueno ? h('div', { class: 'acciones izq' }, h('button', { class: 'btn sec mini', onclick: () => cambiarTipo('compartido') }, icono('clientes'), 'Convertir en compartido')) : null);
+  }
+  const lista = h('ul', { class: 'lista integrantes' }, integrantes.map((m) => {
+    const esDueno = m.rol === 'dueno', soyYo = m.usuario_id === yo.id;
+    return h('li', {},
+      avatarPerfil(m, 'mini'),
+      h('div', { class: 'cuerpo' }, h('p', {}, h('strong', { text: m.nombre + (soyYo ? ' (vos)' : '') })),
+        h('p', { class: 'chico suave', text: [m.usuario ? '@' + m.usuario : null, esDueno ? 'Dueño' : 'Integrante'].filter(Boolean).join(' · ') })),
+      !esDueno && (dueno || esAdmin()) && !soyYo ? h('button', { class: 'btn peligro mini', text: 'Sacar', 'aria-label': 'Sacar a ' + m.nombre, onclick: async () => {
+        if (!await confirmar('¿Sacar a ' + m.nombre + '?', 'Deja de ver este cliente en el momento. Lo que cargó queda en la ficha.', 'Sí, sacar')) return;
+        await intentar(() => datos.quitarIntegrante(c.id, m.usuario_id), 'Integrante sacado.'); recargar();
+      } }) : null);
+  }));
+  let sumar = null;
+  if (dueno || esAdmin()) {
+    const quien = inp('buscado', '', { placeholder: '@usuario o mail', autocapitalize: 'none', spellcheck: 'false', 'aria-label': '@usuario o mail de la persona' });
+    sumar = h('form', { class: 'sumar-integrante' }, quien, h('button', { class: 'btn mini', type: 'submit' }, icono('mas'), 'Sumar'));
+    sumar.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if (!quien.value.trim()) return quien.focus();
+      const r = await intentar(() => datos.agregarIntegrante(c.id, quien.value.trim())).catch(() => null);
+      if (r) { aviso(r.nombre + ' ahora es integrante.'); recargar(); }
+    });
+  }
+  return h('section', { class: 'panel privacidad' }, h('h2', {}, icono('clientes'), 'Compartido'),
+    h('p', { class: 'suave chico', text: 'Lo ven y lo trabajan sus integrantes y el administrador del panel. Nadie más.' }),
+    lista, sumar,
+    sumar ? h('p', { class: 'chico suave', text: 'La persona tiene que tener cuenta en el panel. Pedile su @usuario (está en su perfil).' }) : null,
+    h('div', { class: 'acciones izq' },
+      dueno ? h('button', { class: 'btn peligro mini', onclick: () => cambiarTipo('personal') }, 'Volver a personal') : null,
+      !dueno && soyIntegrante(c) ? h('button', { class: 'btn peligro mini', onclick: async () => {
+        if (!await confirmar('¿Salir de ' + c.nombre + '?', 'Dejás de verlo en el momento. Para volver, el dueño te tiene que sumar de nuevo.', 'Sí, salir')) return;
+        await intentar(() => datos.quitarIntegrante(c.id, yo.id), 'Saliste del cliente.');
+        location.hash = '#/clientes';
+      } }, 'Salir de este cliente') : null));
+}
+
+// ------------------------------------------------------------------
+// Trabajo en grupo (clientes compartidos): tareas, feed y aporte semanal
+// ------------------------------------------------------------------
+// Importancia = puntos. Los puntos son de quien completa la tarea, en la semana
+// (lunes a domingo) en que la completó. La base pone quién y cuándo.
+const IMPORTANCIA = [[1, 'Baja'], [2, 'Media'], [3, 'Alta'], [5, 'Crítica']];
+const nombreImportancia = (n) => (IMPORTANCIA.find((x) => x[0] === Number(n)) || [n, ''])[1];
+// Colores por integrante (validados para daltonismo sobre fondo claro). Siguen a la
+// persona por su orden de entrada al cliente, nunca por el puesto en el ranking.
+const COLORES_INTEGRANTES = ['#0057B8', '#C27A00', '#7A4FA8', '#1E7A4C'];
+const COLOR_OTROS = '#8A8287';
+function inicioSemana(d = new Date()) {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+}
+const sumarDias = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const fechaCorta = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+function haceCuanto(iso) {
+  const min = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (min < 1) return 'recién';
+  if (min < 60) return `hace ${min} min`;
+  if (min < 24 * 60) return `hace ${Math.round(min / 60)} h`;
+  if (min < 7 * 24 * 60) { const d = Math.round(min / 1440); return d === 1 ? 'ayer' : `hace ${d} días`; }
+  return fechaLinda(iso);
+}
+const chipImportancia = (n, prefijo = '') => h('span', { class: 'chip imp imp-' + n, text: `${prefijo}${nombreImportancia(n)} · ${n} ${Number(n) === 1 ? 'pt' : 'pts'}` });
+
+function formTarea(c, integrantes, t = {}) {
+  const hecha = t.estado === 'hecha';
+  const opcionesAsignar = [['', 'Sin asignar (la toma quien pueda)'], ...integrantes.map((m) => [m.usuario_id, m.nombre + (m.usuario_id === yo.id ? ' (vos)' : '')])];
+  const cuerpo = h('div', { class: 'grilla-form' },
+    campo('Qué hay que hacer *', inp('titulo', t.titulo, { required: true, maxlength: 200, placeholder: 'Ej: Diseñar el logo en 3 versiones' }), 'entera'),
+    campo('Detalle', area('detalle', t.detalle, { rows: 2, maxlength: 2000, placeholder: 'Opcional: links, criterios, a quién preguntar…' }), 'entera'),
+    h('div', { class: 'campo entera' }, h('span', { class: 'suave chico', text: 'Importancia (son los puntos que suma al completarla)' }),
+      segmento('importancia', IMPORTANCIA.map(([v, n]) => [v, `${n} · ${v}`]), t.importancia || 2, 'importancia')),
+    campo('Asignada a', sel('asignada_a', opcionesAsignar, t.asignada_a || '')),
+    campo('Para cuándo', inp('vence', t.vence, { type: 'date' })),
+    hecha ? h('p', { class: 'chico suave entera', text: 'Ya está hecha: la importancia y la asignación no se cambian, para no mover puntos ya ganados.' }) : null);
+  if (hecha) cuerpo.querySelectorAll('[name=importancia], [name=asignada_a]').forEach((x) => { x.disabled = true; });
+  return dialogo({
+    titulo: t.id ? 'Editar tarea' : 'Nueva tarea en ' + c.nombre, cuerpo,
+    alGuardar: async (fd) => {
+      const fila = { titulo: String(fd.get('titulo') || '').trim(), detalle: String(fd.get('detalle') || '').trim() || null, vence: fd.get('vence') || null };
+      if (!fila.titulo) throw new Error('Escribí qué hay que hacer.');
+      if (!hecha) { fila.importancia = Number(fd.get('importancia') || 2); fila.asignada_a = fd.get('asignada_a') || null; }
+      if (t.id) fila.id = t.id; else fila.cliente_id = c.id;
+      await datos.guardarTarea(fila);
+      aviso(t.id ? 'Tarea guardada.' : 'Tarea creada.');
+    },
+  });
+}
+
+// Barra de aporte: puntos por integrante en una semana.
+function panelAporte(tareas, integrantes) {
+  const colorDe = new Map(integrantes.map((m, i) => [m.usuario_id, i < COLORES_INTEGRANTES.length ? COLORES_INTEGRANTES[i] : COLOR_OTROS]));
+  const nombreDe = (id) => integrantes.find((m) => m.usuario_id === id)?.nombre || 'Ex integrante';
+  let inicio = inicioSemana();
+  const cont = h('div', { class: 'aporte-cuerpo' });
+  const titulo = h('strong', { class: 'semana' });
+  const sig = h('button', { class: 'btn sec mini btn-icono', 'aria-label': 'Semana siguiente', onclick: () => { inicio = sumarDias(inicio, 7); pintar(); } }, icono('der'));
+  function pintar() {
+    const fin = sumarDias(inicio, 7);
+    const esEsta = +inicio === +inicioSemana();
+    titulo.textContent = (esEsta ? 'Esta semana' : 'Semana') + ` · ${fechaCorta(inicio)} al ${fechaCorta(sumarDias(fin, -1))}`;
+    sig.disabled = esEsta;
+    const porPersona = new Map();
+    for (const t of tareas) {
+      if (t.estado !== 'hecha' || !t.completada_en) continue;
+      const d = new Date(t.completada_en);
+      if (d < inicio || d >= fin) continue;
+      const x = porPersona.get(t.completada_por) || { id: t.completada_por, puntos: 0, tareas: 0 };
+      x.puntos += Number(t.importancia); x.tareas += 1;
+      porPersona.set(t.completada_por, x);
+    }
+    // Todos los integrantes aparecen (también con 0), en su orden fijo; después los ex integrantes.
+    const filas = [...integrantes.map((m) => porPersona.get(m.usuario_id) || { id: m.usuario_id, puntos: 0, tareas: 0 }),
+      ...[...porPersona.values()].filter((x) => !colorDe.has(x.id))];
+    const total = filas.reduce((s, x) => s + x.puntos, 0);
+    const pct = (x) => (total ? Math.round(x.puntos / total * 100) : 0);
+    if (!total) {
+      poner(cont, h('div', { class: 'barra-aporte vacia' }), h('p', { class: 'suave chico', text: esEsta ? 'Todavía nadie completó tareas esta semana.' : 'Esa semana no se completaron tareas.' }));
+      return;
+    }
+    const max = Math.max(...filas.map((x) => x.puntos));
+    const lideres = filas.filter((x) => x.puntos === max);
+    const titular = lideres.length > 1
+      ? `Empate: ${lideres.map((x) => nombreDe(x.id)).join(' y ')} con ${max} pts cada uno`
+      : `${esEsta ? 'Va aportando más' : 'Aportó más'}: ${nombreDe(lideres[0].id)} · ${max} pts (${pct(lideres[0])}%)`;
+    const tip = h('div', { class: 'tip-aporte', role: 'tooltip', hidden: true });
+    const barra = h('div', { class: 'barra-aporte', role: 'img', 'aria-label': filas.filter((x) => x.puntos).map((x) => `${nombreDe(x.id)} ${x.puntos} pts`).join(', ') },
+      filas.filter((x) => x.puntos).map((x) => {
+        // Estilos por CSSOM (la política de seguridad no deja usar el atributo style).
+        const seg = h('span', { class: 'seg', tabindex: 0 });
+        seg.style.flexGrow = String(x.puntos); seg.style.background = colorDe.get(x.id) || COLOR_OTROS;
+        const mostrar = () => { tip.textContent = `${nombreDe(x.id)}: ${x.puntos} pts · ${x.tareas} ${x.tareas === 1 ? 'tarea' : 'tareas'} · ${pct(x)}%`; tip.hidden = false; tip.style.left = (seg.offsetLeft + seg.offsetWidth / 2) + 'px'; };
+        seg.addEventListener('pointerenter', mostrar); seg.addEventListener('focus', mostrar);
+        seg.addEventListener('pointerleave', () => { tip.hidden = true; }); seg.addEventListener('blur', () => { tip.hidden = true; });
+        return seg;
+      }));
+    const muestra = (id) => { const i = h('i'); i.style.background = colorDe.get(id) || COLOR_OTROS; return i; };
+    const leyenda = h('ul', { class: 'leyenda-aporte' }, filas.map((x) => h('li', {},
+      muestra(x.id),
+      h('span', { class: 'quien', text: nombreDe(x.id) + (x.id === yo.id ? ' (vos)' : '') }),
+      h('span', { class: 'mono', text: `${x.puntos} pts` }),
+      h('span', { class: 'suave chico', text: `${x.tareas} ${x.tareas === 1 ? 'tarea' : 'tareas'} · ${pct(x)}%` }))));
+    poner(cont, h('p', { class: 'titular-aporte', text: titular }), h('div', { class: 'barra-env' }, barra, tip), leyenda);
+  }
+  pintar();
+  return h('section', { class: 'panel aporte' },
+    h('h2', {}, 'Aporte de la semana',
+      h('span', { class: 'mes-nav' },
+        h('button', { class: 'btn sec mini btn-icono', 'aria-label': 'Semana anterior', onclick: () => { inicio = sumarDias(inicio, -7); pintar(); } }, icono('izq')),
+        titulo, sig)),
+    cont,
+    h('p', { class: 'chico suave bloque', text: 'Cada tarea completada suma su importancia (Baja 1, Media 2, Alta 3, Crítica 5) a quien la completó. La semana va de lunes a domingo.' }));
+}
+
+function panelTareas(c, integrantes, tareas, recargar) {
+  const nombreDe = (id) => integrantes.find((m) => m.usuario_id === id)?.nombre || 'Ex integrante';
+  const perfilDe = (id) => integrantes.find((m) => m.usuario_id === id) || { nombre: '?' };
+  let filtro = sessionStorage.getItem('vy-filtro-tareas') || 'pendientes';
+  const lista = h('ul', { class: 'lista tareas' });
+  const pend = tareas.filter((t) => t.estado === 'pendiente');
+  const seg = segmento('filtro-tareas', [['pendientes', `Pendientes (${pend.length})`], ['mias', `Mías (${pend.filter((t) => t.asignada_a === yo.id).length})`], ['hechas', 'Hechas']], filtro);
+  seg.addEventListener('change', (ev) => { filtro = ev.target.value; sessionStorage.setItem('vy-filtro-tareas', filtro); pintar(); });
+  const hoy = hoyISO();
+  function fila(t) {
+    const hecha = t.estado === 'hecha';
+    const puedeCompletar = !hecha && (!t.asignada_a || t.asignada_a === yo.id);
+    const puedeReabrir = hecha && (t.completada_por === yo.id || soyDueno(c) || esAdmin());
+    const puedeBorrar = (t.creado_por === yo.id && !hecha) || soyDueno(c) || esAdmin();
+    const vencida = !hecha && t.vence && t.vence < hoy;
+    const check = h('button', { class: 'check-tarea' + (hecha ? ' hecha' : ''), type: 'button', disabled: !puedeCompletar && !hecha,
+      'aria-label': hecha ? 'Hecha' : puedeCompletar ? 'Marcar como hecha: ' + t.titulo : 'Asignada a ' + nombreDe(t.asignada_a),
+      title: hecha ? 'Hecha' : puedeCompletar ? 'Marcar como hecha' : 'La completa ' + nombreDe(t.asignada_a),
+      onclick: hecha ? null : async () => { await intentar(() => datos.completarTarea(t.id), `¡Hecha! +${t.importancia} ${t.importancia === 1 ? 'punto' : 'puntos'}`).catch(() => {}); recargar(); } }, icono('check'));
+    return h('li', { class: hecha ? 'hecha' : '' }, check,
+      h('div', { class: 'cuerpo' },
+        h('p', {}, h('strong', { text: t.titulo })),
+        t.detalle ? h('p', { class: 'chico suave texto-largo', text: t.detalle }) : null,
+        h('p', { class: 'chico meta-tarea' }, chipImportancia(t.importancia), ' ',
+          hecha
+            ? h('span', { class: 'suave', text: `Hecha por ${nombreDe(t.completada_por)} · ${fechaLinda(t.completada_en)}` })
+            : t.asignada_a
+              ? h('span', { class: 'asignada' }, avatarPerfil(perfilDe(t.asignada_a), 'micro'), nombreDe(t.asignada_a) + (t.asignada_a === yo.id ? ' (vos)' : ''))
+              : h('span', { class: 'suave', text: 'Sin asignar' }),
+          !hecha && t.vence ? h('span', { class: vencida ? 'debe' : 'suave', text: ' · ' + (vencida ? 'venció ' : 'para el ') + fechaLinda(t.vence) }) : null)),
+      h('div', { class: 'acciones-li' },
+        h('button', { class: 'btn sec mini btn-icono', 'aria-label': 'Editar ' + t.titulo, title: 'Editar', onclick: async () => { if (await formTarea(c, integrantes, t)) recargar(); } }, icono('editar')),
+        puedeReabrir ? h('button', { class: 'btn sec mini', text: 'Reabrir', onclick: async () => {
+          if (!await confirmar('¿Reabrir "' + t.titulo + '"?', `Vuelve a pendiente y ${nombreDe(t.completada_por)} pierde los ${t.importancia} pts de esa semana.`, 'Sí, reabrir')) return;
+          await intentar(() => datos.reabrirTarea(t.id), 'Tarea reabierta.').catch(() => {}); recargar();
+        } }) : null,
+        puedeBorrar ? h('button', { class: 'btn peligro mini btn-icono', 'aria-label': 'Borrar ' + t.titulo, title: 'Borrar', onclick: async () => {
+          if (!await confirmar('¿Borrar "' + t.titulo + '"?', hecha ? `Ya está hecha: ${nombreDe(t.completada_por)} pierde sus ${t.importancia} pts. No se puede deshacer.` : 'No se puede deshacer.')) return;
+          await intentar(() => datos.borrarTarea(t.id), 'Tarea borrada.').catch(() => {}); recargar();
+        } }, icono('borrar')) : null));
+  }
+  function pintar() {
+    const orden = (a, b) => (b.importancia - a.importancia) || String(a.vence || '9999').localeCompare(String(b.vence || '9999'));
+    const l = filtro === 'hechas' ? tareas.filter((t) => t.estado === 'hecha').sort((a, b) => String(b.completada_en).localeCompare(String(a.completada_en)))
+      : filtro === 'mias' ? pend.filter((t) => t.asignada_a === yo.id).sort(orden) : [...pend].sort(orden);
+    poner(lista, l.length ? l.map(fila) : h('li', { class: 'vacio-li' }, h('p', { class: 'suave', text:
+      filtro === 'hechas' ? 'Todavía no hay tareas hechas.' : filtro === 'mias' ? 'No tenés tareas pendientes en este cliente.' : 'No hay tareas pendientes. Creá una con "+ Tarea".' })));
+  }
+  pintar();
+  return h('section', { class: 'panel' },
+    h('h2', {}, 'Tareas', h('button', { class: 'btn mini', onclick: async () => { if (await formTarea(c, integrantes)) recargar(); } }, icono('mas'), 'Tarea')),
+    seg, lista);
+}
+
+function panelFeed(feed, integrantes) {
+  const nombreDe = (id) => (id ? integrantes.find((m) => m.usuario_id === id)?.nombre || 'Ex integrante' : 'Alguien');
+  const perfilDe = (id) => integrantes.find((m) => m.usuario_id === id) || { nombre: nombreDe(id) };
+  const q = (t) => `«${t}»`;
+  const texto = (f) => {
+    const A = nombreDe(f.autor), O = nombreDe(f.otro);
+    switch (f.tipo) {
+      case 'tarea_creada': return `${A} creó ${q(f.texto)}` + (f.otro ? ` y se la asignó a ${O}` : '');
+      case 'tarea_asignada': return `${A} le asignó ${q(f.texto)} a ${O}`;
+      case 'tarea_hecha': return `${A} completó ${q(f.texto)}`;
+      case 'tarea_reabierta': return `${A} reabrió ${q(f.texto)}`;
+      case 'novedad': return `${A} anotó en el historial:`;
+      case 'integrante_entro': return `${A} sumó a ${O}`;
+      case 'integrante_salio': return f.autor === f.otro ? `${O} salió del cliente` : `${A} sacó a ${O}`;
+      default: return f.texto || '';
+    }
+  };
+  return h('section', { class: 'panel' }, h('h2', { text: 'Feed' }),
+    feed.length ? h('ul', { class: 'feed' }, feed.map((f) => h('li', { class: 'feed-' + f.tipo },
+      avatarPerfil(perfilDe(f.autor), 'mini'),
+      h('div', { class: 'cuerpo' },
+        h('p', {}, texto(f), f.tipo === 'tarea_hecha' && f.puntos ? [' ', h('span', { class: 'chip puntos', text: `+${f.puntos}` })] : null),
+        f.tipo === 'novedad' && f.texto ? h('p', { class: 'cita texto-largo', text: f.texto }) : null,
+        h('p', { class: 'chico suave', text: haceCuanto(f.creado_en) }))))) :
+      h('p', { class: 'suave', text: 'Acá van a aparecer las tareas que se crean y se completan, las novedades y quién entra o sale.' }));
+}
+
+// Tareas pendientes asignadas a mí, en todos los clientes (arriba de la lista de clientes).
+function panelMisTareas(mias) {
+  if (!mias.length) return null;
+  const hoy = hoyISO();
+  return h('section', { class: 'panel mis-tareas' },
+    h('h2', { text: `Tus tareas pendientes (${mias.length})` }),
+    h('ul', { class: 'lista tareas' }, mias.map((t) => h('li', {},
+      h('button', { class: 'check-tarea', type: 'button', 'aria-label': 'Marcar como hecha: ' + t.titulo, title: 'Marcar como hecha',
+        onclick: async () => { await intentar(() => datos.completarTarea(t.id), `¡Hecha! +${t.importancia} ${t.importancia === 1 ? 'punto' : 'puntos'}`).catch(() => {}); ruta(); } }, icono('check')),
+      h('div', { class: 'cuerpo' },
+        h('p', {}, h('strong', { text: t.titulo })),
+        h('p', { class: 'chico meta-tarea' }, chipImportancia(t.importancia), ' ',
+          h('a', { href: '#/cliente/' + encodeURIComponent(t.cliente_id), text: t.clientes?.nombre || 'Cliente' }),
+          t.vence ? h('span', { class: t.vence < hoy ? 'debe' : 'suave', text: ' · ' + (t.vence < hoy ? 'venció ' : 'para el ') + fechaLinda(t.vence) }) : null))))));
 }
 
 function formAcuerdo(c, a = {}) {
@@ -685,7 +1236,7 @@ async function formMovimiento(m = {}, { cliente, acuerdos } = {}) {
   if (esPagoCliente) {
     if (acuerdos?.length) acuerdoSel = sel('acuerdo_id', [['', 'Sin trato asociado'], ...acuerdos.filter((a) => a.estado !== 'cancelado').map((a) => [a.id, a.concepto + ' (' + a.moneda + ')'])], m.acuerdo_id || (acuerdos.find((a) => a.estado === 'vigente')?.id ?? ''));
   } else {
-    const cl = await datos.listarClientes();
+    const cl = (await datos.listarClientes()).filter((x) => esMio(x) || x.id === m.cliente_id);
     clienteSel = sel('cliente_id', [['', 'Ninguno'], ...cl.map((x) => [x.id, x.nombre])], m.cliente_id || '');
   }
   const extras = h('details', { class: 'entera' }, h('summary', { class: 'chico', text: 'Más opciones (cliente, medio de pago)' }),
@@ -759,7 +1310,7 @@ async function darDeBaja(m) {
 }
 
 function filaMovimiento(m, nombres, { pref } = {}) {
-  const puedeEditar = esAdmin() || m.creado_por === yo.id;
+  const puedeEditar = esAdmin() || m.dueno_id === yo.id;
   const recurrente = (m.frecuencia || 'unico') !== 'unico';
   return h('li', {},
     h('span', { class: 'icono-mov ' + m.tipo }, icono(m.tipo)),
@@ -773,7 +1324,7 @@ function filaMovimiento(m, nombres, { pref } = {}) {
     h('span', { class: 'monto ' + (m.tipo === 'ingreso' ? 'pos' : 'neg'), text: (m.tipo === 'ingreso' ? '+ ' : '− ') + plata(m.monto, m.moneda) }),
     puedeEditar ? h('button', { class: 'btn sec mini btn-icono', 'aria-label': 'Editar ' + tituloMov(m), title: 'Editar', onclick: async () => { if (await formMovimiento(m)) ruta(); } }, icono('editar')) : null,
     recurrente && activoHoy(m) && puedeEditar ? h('button', { class: 'btn sec mini', onclick: () => darDeBaja(m) }, 'Dar de baja') : null,
-    esAdmin() ? h('button', { class: 'btn peligro mini btn-icono', 'aria-label': 'Borrar ' + tituloMov(m), title: 'Borrar', onclick: async () => {
+    puedeEditar ? h('button', { class: 'btn peligro mini btn-icono', 'aria-label': 'Borrar ' + tituloMov(m), title: 'Borrar', onclick: async () => {
       if (!await confirmar('¿Borrar "' + tituloMov(m) + '"?', recurrente ? 'Se borra de todos los meses, también de los pasados. Si solo dejó de pagarse, usá "Dar de baja".' : `${plata(m.monto, m.moneda)} del ${fechaLinda(m.fecha)}. No se puede deshacer.`)) return;
       await intentar(() => datos.borrarMovimiento(m.id), 'Borrado'); ruta();
     } }, icono('borrar')) : null);
@@ -783,7 +1334,11 @@ async function vistaFinanzas() {
   const params = new URLSearchParams(location.hash.split('?')[1] || '');
   const hoyPref = mesDe(hoyISO());
   const pref = /^\d{4}-\d{2}$/.test(params.get('mes') || '') ? params.get('mes') : hoyPref;
-  const [movsTodos, acuerdos, clientes] = await Promise.all([datos.listarMovimientos(), datos.listarTodosAcuerdos(), datos.listarClientes()]);
+  const [movsVisibles, acuerdosVisibles, clientes] = await Promise.all([datos.listarMovimientos(), datos.listarTodosAcuerdos(), datos.listarClientes()]);
+  // Cada cuenta lleva sus Finanzas: solo los movimientos que cargó ella y los tratos de sus clientes.
+  const movsTodos = movsVisibles.filter((m) => m.dueno_id === yo.id);
+  const misIds = new Set(clientes.filter(esMio).map((c) => c.id));
+  const acuerdos = acuerdosVisibles.filter((a) => misIds.has(a.cliente_id));
   const nombres = Object.fromEntries(clientes.map((c) => [c.id, c.nombre]));
   const monedasConDatos = [...new Set(movsTodos.map((x) => x.moneda))];
   const moneda = ['ARS', 'USD'].includes(params.get('moneda')) ? params.get('moneda') : (monedasConDatos.includes('ARS') || !monedasConDatos.length ? 'ARS' : 'USD');
@@ -873,7 +1428,7 @@ async function vistaFinanzas() {
 
   poner($main, 
     h('div', { class: 'encabezado' }, h('h1', { text: 'Finanzas' }), monSeg),
-    monedasConDatos.length > 1 ? h('p', { class: 'suave chico bloque', text: 'Pesos y dólares se cuentan por separado, sin convertir.' }) : null,
+    h('p', { class: 'suave chico bloque nota-icono' }, icono('candado'), h('span', { text: 'Son las finanzas de tu cuenta: las ves vos y el administrador del panel. Un pago que carga otro integrante en un cliente compartido queda en sus finanzas, no en las tuyas.' + (monedasConDatos.length > 1 ? ' Pesos y dólares se cuentan por separado, sin convertir.' : '') })),
     carga,
     kpis,
     pMes,
@@ -974,7 +1529,7 @@ let mapaPanel = null;
 async function vistaMapa() {
   const params = new URLSearchParams(location.hash.split('?')[1] || '');
   const paraCliente = params.get('cliente');
-  const clientes = await datos.listarClientes();
+  const clientes = (await datos.listarClientes()).filter((c) => esMio(c) || c.mapa_publicar);
   const conPin = clientes.filter((c) => c.mapa_publicar && c.mapa_lat != null);
   const objetivo = paraCliente ? clientes.find((c) => c.id === paraCliente) : null;
 
@@ -1127,7 +1682,8 @@ async function vistaRegistro() {
     descargar(`vectyo-panel-copia-${hoyISO()}.json`, JSON.stringify(d, null, 2), 'application/json');
   };
   const pipeline = async () => {
-    const [cl, ac] = await Promise.all([datos.listarClientes(), datos.listarTodosAcuerdos()]);
+    const [todosCl, ac] = await Promise.all([datos.listarClientes(), datos.listarTodosAcuerdos()]);
+    const cl = todosCl.filter(esMio);
     const cab = ['id', 'fecha_ingreso', 'negocio', 'rubro', 'ciudad', 'contacto', 'whatsapp', 'instagram', 'web', 'origen', 'servicio_interes', 'etapa', 'responsable', 'proxima_accion', 'fecha_proxima_accion', 'monto_estimado', 'moneda', 'notas'];
     const esc = (v) => { const t = String(v ?? '').replace(/\r?\n/g, ' '); return /[",;]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
     const filas = [...cl].sort((x, y) => String(x.creado_en).localeCompare(String(y.creado_en))).map((c, i) => {

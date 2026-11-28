@@ -16,6 +16,14 @@ function falla(error) {
 export function traducirError(m) {
   const t = (m || '').toLowerCase();
   if (t.includes('invalid login')) return 'Mail o contraseña incorrectos.';
+  if (t.includes('email not confirmed')) return 'Todavía no confirmaste tu mail. Buscá el mail de confirmación (mirá también en spam) y tocá el link.';
+  if (t.includes('signup') && t.includes('disabled')) return 'Por ahora no se pueden crear cuentas nuevas.';
+  if (t.includes('already registered')) return 'Ya hay una cuenta con ese mail. Entrá con tu contraseña.';
+  if (t.includes('password should') || t.includes('weak password') || t.includes('weak_password')) return 'La contraseña es muy débil. Usá al menos 12 caracteres con minúsculas, mayúsculas, números y un símbolo.';
+  if (t.includes('perfiles_usuario_unico') || (t.includes('duplicate key') && t.includes('usuario'))) return 'Ese @usuario ya lo usa otra persona. Probá con otro.';
+  if (t.includes('perfiles_usuario_formato')) return 'El @usuario va de 3 a 30 caracteres: letras minúsculas, números, punto o guion bajo.';
+  if (t.includes('perfiles_descripcion_largo')) return 'La descripción puede tener hasta 160 caracteres.';
+  if (t.includes('fecha de nacimiento')) return 'La fecha de nacimiento no es válida (hay que tener al menos 13 años).';
   if (t.includes('invalid totp') || t.includes('invalid code') || t.includes('expired')) return 'El código no es válido o venció. Probá con el que aparece ahora en la app.';
   if (t.includes('rate limit') || t.includes('too many')) return 'Demasiados intentos. Esperá unos minutos y volvé a probar.';
   if (t.includes('row-level security') || t.includes('permission') || t.includes('sin permiso')) return 'No tenés permiso para hacer esto.';
@@ -28,6 +36,11 @@ export function traducirError(m) {
 // ===================================================================
 // Supabase
 // ===================================================================
+// Deja en cada cliente la lista de ids de sus integrantes (miembros_ids).
+function conMiembros(c) {
+  const { cliente_miembros, ...resto } = c;
+  return { ...resto, miembros_ids: (cliente_miembros || []).map((m) => m.usuario_id) };
+}
 function crearSupabase() {
   const sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey, {
     auth: {
@@ -69,6 +82,15 @@ function crearSupabase() {
       const { error } = await sb.auth.signInWithPassword({ email, password });
       falla(error);
     },
+    // Cuenta nueva. El perfil (rol "usuario") lo crea la base sola.
+    async registrarse(nombre, email, password) {
+      const { data, error } = await sb.auth.signUp({
+        email, password,
+        options: { data: { nombre }, emailRedirectTo: location.origin + location.pathname },
+      });
+      falla(error);
+      return { necesitaConfirmar: !data.session };
+    },
     async estadoMfa() {
       const { data, error } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
       falla(error);
@@ -99,10 +121,61 @@ function crearSupabase() {
       return data;
     },
     async registrarIngreso() { await sb.rpc('registrar_ingreso'); },
+    async guardarPerfil(campos) {
+      const { data: u } = await sb.auth.getUser();
+      return sel(sb.from('perfiles').update(campos).eq('id', u.user.id).select().single());
+    },
+    // tipo: 'foto' o 'banner'. Va a la carpeta propia del depósito privado "perfiles".
+    async subirImagenPerfil(perfil, tipo, archivo) {
+      const ext = { 'image/png': 'png', 'image/webp': 'webp' }[archivo.type] || 'jpg';
+      const path = `${perfil.id}/${tipo}-${crypto.randomUUID()}.${ext}`;
+      const { error } = await sb.storage.from('perfiles').upload(path, archivo, { contentType: archivo.type, upsert: false });
+      falla(error);
+      const col = tipo === 'banner' ? 'banner_path' : 'foto_path';
+      const anterior = perfil[col];
+      const nuevo = await this.guardarPerfil({ [col]: path });
+      if (anterior) await sb.storage.from('perfiles').remove([anterior]);
+      return nuevo;
+    },
+    urlImagenPerfil: (path) => urlFirmada('perfiles', path, 3600),
 
-    listarClientes: () => sel(sb.from('clientes').select('*').order('nombre')),
-    obtenerCliente: (id) => sel(sb.from('clientes').select('*').eq('id', id).single()),
-    guardarCliente: (c) => guardarEn('clientes', c),
+    async listarClientes() {
+      const l = await sel(sb.from('clientes').select('*, cliente_miembros(usuario_id)').order('nombre'));
+      return l.map(conMiembros);
+    },
+    async obtenerCliente(id) {
+      const c = await sel(sb.from('clientes').select('*, cliente_miembros(usuario_id)').eq('id', id).maybeSingle());
+      return c ? conMiembros(c) : null;
+    },
+    async guardarCliente(c) {
+      const { miembros_ids, ...fila } = c;
+      return conMiembros({ cliente_miembros: [], ...await guardarEn('clientes', fila) });
+    },
+    // Integrantes de un cliente compartido, con su perfil.
+    async listarIntegrantes(cid) {
+      const ms = await sel(sb.from('cliente_miembros').select('usuario_id, rol, creado_en').eq('cliente_id', cid).order('creado_en'));
+      if (!ms.length) return [];
+      const ps = await sel(sb.from('perfiles').select('id, nombre, usuario, foto_path').in('id', ms.map((m) => m.usuario_id)));
+      return ms.map((m) => ({ ...(ps.find((x) => x.id === m.usuario_id) || { id: m.usuario_id, nombre: 'Cuenta' }), ...m }));
+    },
+    async agregarIntegrante(cid, buscado) {
+      const { data, error } = await sb.rpc('agregar_integrante', { cid, buscado });
+      falla(error);
+      return data;
+    },
+    quitarIntegrante: (cid, usuarioId) => sel(sb.from('cliente_miembros').delete().eq('cliente_id', cid).eq('usuario_id', usuarioId)),
+
+    // Tareas y feed de los clientes compartidos. Quién completa y cuándo lo pone la base.
+    listarTareas: (cid) => sel(sb.from('tareas').select('*').eq('cliente_id', cid).order('estado').order('creado_en', { ascending: false })),
+    async listarMisTareas() {
+      const { data: u } = await sb.auth.getUser();
+      return sel(sb.from('tareas').select('*, clientes(nombre)').eq('asignada_a', u.user.id).eq('estado', 'pendiente').order('vence', { ascending: true, nullsFirst: false }));
+    },
+    guardarTarea: (t) => guardarEn('tareas', t),
+    completarTarea: (id) => guardarEn('tareas', { id, estado: 'hecha' }),
+    reabrirTarea: (id) => guardarEn('tareas', { id, estado: 'pendiente' }),
+    borrarTarea: (id) => sel(sb.from('tareas').delete().eq('id', id)),
+    listarFeed: (cid) => sel(sb.from('feed').select('*').eq('cliente_id', cid).order('creado_en', { ascending: false }).limit(60)),
     async borrarCliente(c) {
       const arch = await sel(sb.from('archivos').select('path').eq('cliente_id', c.id));
       if (arch.length) await sb.storage.from('archivos').remove(arch.map((a) => a.path));
@@ -156,7 +229,7 @@ function crearSupabase() {
     },
 
     listarAuditoria: () => sel(sb.from('auditoria').select('*').order('cuando', { ascending: false }).limit(300)),
-    listarPerfiles: () => sel(sb.from('perfiles').select('id,nombre,rol')),
+    listarPerfiles: () => sel(sb.from('perfiles').select('id,nombre,rol,usuario,foto_path')),
 
     async copia() {
       const tablas = ['clientes', 'historial', 'acuerdos', 'movimientos', 'archivos', 'perfiles'];
@@ -172,7 +245,11 @@ function crearSupabase() {
 // ===================================================================
 function crearDemo() {
   const uid = () => crypto.randomUUID();
-  const yo = { id: 'demo-luciano', nombre: 'Luciano (demo)', rol: new URLSearchParams(location.search).get('rol') === 'equipo' ? 'equipo' : 'admin' };
+  const rolDemo = new URLSearchParams(location.search).get('rol');
+  const yo = { id: 'demo-luciano', nombre: 'Luciano (demo)', rol: ['equipo', 'usuario'].includes(rolDemo) ? rolDemo : 'admin',
+    usuario: null, descripcion: null, fecha_nacimiento: null, mostrar_edad: true, foto_path: null, banner_path: null,
+    instagram: null, tiktok: null, linkedin: null, x: null, web: null, whatsapp: null,
+    perfil_completo: new URLSearchParams(location.search).has('completo') };
   let logueado = false, nivel = 'aal1';
   const fotos = new Map();
   const db = { clientes: [], historial: [], acuerdos: [], movimientos: [], archivos: [], auditoria: [] };
@@ -183,12 +260,59 @@ function crearDemo() {
   const c1 = { id: uid(), nombre: 'Panadería La Espiga (demo)', contacto: 'Marta Gómez', rubro: 'Panadería', ciudad: 'San Luis', whatsapp: '2660000000', instagram: '@laespiga.demo', web: '', origen: 'Instagram', servicios: ['Web', 'Redes'], etapa: 'en-produccion', responsable: 'Luciano', proxima_accion: 'Mandar primera versión de la web', fecha_proxima_accion: f(hoy.getMonth() + 1, Math.min(28, hoy.getDate() + 2)), personalidad: 'Muy detallista y cálida. Le gusta sentirse escuchada.', forma_trabajo: 'Prefiere audios de WhatsApp y reuniones cortas los lunes.', canal_preferido: 'WhatsApp (audios)', horarios: 'Después de las 15 h', evitar: 'Mandarle mails largos.', notas: 'Dato de prueba.', foto_path: null };
   const c2 = { id: uid(), nombre: 'Estudio Contable Ríos (demo)', contacto: 'Pablo Ríos', rubro: 'Contador', ciudad: 'Villa Mercedes', whatsapp: '2660000001', instagram: '', web: 'https://ejemplo.com', origen: 'Referido', servicios: ['Automatización e IA'], etapa: 'propuesta', responsable: 'Juan', proxima_accion: 'Seguimiento de la propuesta', fecha_proxima_accion: f(hoy.getMonth() + 1, 1), personalidad: 'Directo, va al grano, mira números.', forma_trabajo: 'Todo por mail con resumen en viñetas.', canal_preferido: 'Mail', horarios: 'Mañanas', evitar: 'Llamadas sin agendar.', notas: '', foto_path: null };
   const c3 = { id: uid(), nombre: 'Gimnasio Pulso (demo)', contacto: 'Caro', rubro: 'Gimnasio', ciudad: 'San Luis', whatsapp: '', instagram: '@pulso.demo', web: '', origen: 'Instagram', servicios: ['Marketing y redes'], etapa: 'entregado', responsable: 'Luciano', personalidad: '', forma_trabajo: '', foto_path: null };
-  db.clientes.push(c1, c2, c3);
+  c2.responsable = 'Juan (demo)';
+  const c4 = { id: uid(), nombre: 'Kiosco de Juan (demo)', contacto: 'Ana', rubro: 'Kiosco', ciudad: 'Juana Koslay', servicios: ['Páginas web'], etapa: 'consulta', responsable: 'Juan (demo)', notas: 'Personal de Juan: solo lo ve él y el admin.', foto_path: null };
+  const LU = 'demo-luciano';
+  for (const c of [c1, c3]) Object.assign(c, { tipo: 'personal', dueno_id: LU });
+  Object.assign(c2, { tipo: 'compartido', dueno_id: LU });
+  Object.assign(c4, { tipo: 'personal', dueno_id: 'demo-juan' });
+  db.clientes.push(c1, c2, c3, c4);
+  const perfilesDemo = [
+    { id: LU, nombre: 'Luciano (demo)', usuario: 'luciano', email: 'luciano@vectyo.com', rol: 'admin', foto_path: null },
+    { id: 'demo-juan', nombre: 'Juan (demo)', usuario: 'juanchi', email: 'juanchi@vectyo.com', rol: 'usuario', foto_path: null },
+    { id: 'demo-marta', nombre: 'Marta Prueba (demo)', usuario: 'marta', email: 'marta@ejemplo.com', rol: 'usuario', foto_path: null },
+  ];
+  db.miembros = [
+    { cliente_id: c2.id, usuario_id: LU, rol: 'dueno', creado_en: new Date().toISOString() },
+    { cliente_id: c2.id, usuario_id: 'demo-juan', rol: 'integrante', creado_en: new Date().toISOString() },
+  ];
+  // ?como=juan: el demo se ve como Juan (usuario e integrante del compartido).
+  if (new URLSearchParams(location.search).get('como') === 'juan') Object.assign(yo, { id: 'demo-juan', nombre: 'Juan (demo)', rol: 'usuario', usuario: 'juanchi' });
+  const otrosPerfiles = () => perfilesDemo.filter((x) => x.id !== yo.id);
+  // Tareas y feed de prueba en el compartido (esta semana: Juan 3 tareas, Luciano 2).
+  db.tareas = []; db.feed = [];
+  const haceDias = (d, hora = 11) => { const x = new Date(); x.setDate(x.getDate() - d); x.setHours(hora, 0, 0, 0); return x.toISOString(); };
+  const diaSemana = (new Date().getDay() + 6) % 7; // 0 = lunes
+  const enSemana = (d) => (Math.min(d, diaSemana) === 0 ? new Date(Date.now() - 30 * 60000).toISOString() : haceDias(Math.min(d, diaSemana)));
+  const tarea = (titulo, importancia, asignada_a, extra = {}) => {
+    const t = { id: uid(), cliente_id: c2.id, titulo, detalle: null, importancia, asignada_a, vence: null, estado: 'pendiente', completada_por: null, completada_en: null, creado_por: LU, creado_en: haceDias(9), ...extra };
+    db.tareas.push(t);
+    db.feed.push({ id: uid(), cliente_id: c2.id, tipo: 'tarea_creada', autor: LU, otro: asignada_a, tarea_id: t.id, texto: titulo, puntos: importancia, creado_en: t.creado_en });
+    if (t.estado === 'hecha') db.feed.push({ id: uid(), cliente_id: c2.id, tipo: 'tarea_hecha', autor: t.completada_por, tarea_id: t.id, texto: titulo, puntos: importancia, creado_en: t.completada_en });
+    return t;
+  };
+  const hecha = (quien, cuando) => ({ estado: 'hecha', completada_por: quien, completada_en: cuando });
+  tarea('Relevar los procesos del estudio', 3, 'demo-juan', hecha('demo-juan', enSemana(3)));
+  tarea('Armar el formulario de alta de clientes', 2, 'demo-juan', hecha('demo-juan', enSemana(2)));
+  tarea('Probar el bot de turnos con 5 casos', 1, 'demo-juan', hecha('demo-juan', enSemana(1)));
+  tarea('Mandar la propuesta final', 5, LU, hecha(LU, enSemana(2)));
+  tarea('Llamada de seguimiento con Pablo', 2, LU, hecha(LU, enSemana(0)));
+  tarea('Conectar el bot con WhatsApp Business', 3, 'demo-juan', hecha('demo-juan', haceDias(diaSemana + 3)));
+  tarea('Cargar las preguntas frecuentes al bot', 2, 'demo-juan', { vence: new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10) });
+  tarea('Preparar la factura de la seña', 1, LU, { vence: new Date(Date.now() - 864e5).toISOString().slice(0, 10) });
+  tarea('Definir colores del panel del estudio', 3, null);
+  db.feed.push({ id: uid(), cliente_id: c2.id, tipo: 'integrante_entro', autor: LU, otro: 'demo-juan', creado_en: haceDias(10) });
+  const alFeed = (cid, fila) => { if (db.clientes.find((c) => c.id === cid)?.tipo === 'compartido') db.feed.push({ id: uid(), cliente_id: cid, creado_en: new Date().toISOString(), ...fila }); };
+  const integrantes = (cid) => db.miembros.filter((m) => m.cliente_id === cid);
+  const puedeVer = (c) => !!c && (yo.rol === 'admin' || c.dueno_id === yo.id || (c.tipo === 'compartido' && integrantes(c.id).some((m) => m.usuario_id === yo.id)));
+  const puedeVerId = (cid) => puedeVer(db.clientes.find((c) => c.id === cid));
+  const conIds = (c) => ({ ...c, miembros_ids: integrantes(c.id).map((m) => m.usuario_id) });
+  const sinPermiso = () => Promise.reject(new Error('No tenés permiso para hacer esto.'));
   const a1 = { id: uid(), cliente_id: c1.id, concepto: 'Web institucional', tipo: 'proyecto', monto: 900000, moneda: 'ARS', fecha: f(Math.max(1, hoy.getMonth()), 5), estado: 'vigente', condiciones: '50% de seña, 50% contra entrega' };
   const a2 = { id: uid(), cliente_id: c3.id, concepto: 'Manejo de redes', tipo: 'mensual', monto: 250, moneda: 'USD', fecha: f(1, 10), estado: 'vigente', condiciones: 'Se cobra del 1 al 10 de cada mes' };
   db.acuerdos.push(a1, a2);
   db.historial.push({ id: uid(), cliente_id: c1.id, fecha: f(hoy.getMonth() + 1, 1), texto: 'Cobramos la seña y arrancamos el diseño.', creado_en: new Date().toISOString() });
-  const mov = (fecha, tipo, categoria, monto, moneda, extra = {}) => db.movimientos.push({ id: uid(), fecha, tipo, categoria, monto, moneda, descripcion: categoria, frecuencia: 'unico', fecha_fin: null, creado_por: 'demo-otro', creado_en: new Date().toISOString(), ...extra });
+  const mov = (fecha, tipo, categoria, monto, moneda, extra = {}) => db.movimientos.push({ id: uid(), fecha, tipo, categoria, monto, moneda, descripcion: categoria, frecuencia: 'unico', fecha_fin: null, creado_por: 'demo-otro', dueno_id: 'demo-luciano', creado_en: new Date().toISOString(), ...extra });
   mov(f(Math.max(1, hoy.getMonth()), 6), 'ingreso', 'Seña', 450000, 'ARS', { descripcion: 'Seña web La Espiga', cliente_id: c1.id, acuerdo_id: a1.id });
   mov(f(1, 3), 'gasto', 'Otro', 25000, 'ARS', { descripcion: 'Artlist Pro', frecuencia: 'mensual' });
   mov(f(1, 5), 'gasto', 'Hosting', 8000, 'ARS', { descripcion: 'Hosting web clientes', frecuencia: 'mensual' });
@@ -211,23 +335,26 @@ function crearDemo() {
       log(tabla, 'update', db[tabla][i]);
       return espera(db[tabla][i]);
     }
-    const nueva = { ...fila, id: uid(), creado_por: yo.id, creado_en: new Date().toISOString() };
+    const nueva = { ...fila, id: uid(), creado_por: yo.id, dueno_id: yo.id, creado_en: new Date().toISOString() };
     db[tabla].push(nueva);
     log(tabla, 'insert', nueva);
     return espera(nueva);
   }
   function borrar(tabla, id) {
-    if (yo.rol !== 'admin') return Promise.reject(new Error('No tenés permiso para hacer esto.'));
     const fila = db[tabla].find((x) => x.id === id);
+    const cli = tabla === 'clientes' ? fila : db.clientes.find((c) => c.id === fila?.cliente_id);
+    const dueno = tabla === 'movimientos' ? fila?.dueno_id === yo.id : cli?.dueno_id === yo.id;
+    if (yo.rol !== 'admin' && !dueno) return sinPermiso();
     db[tabla] = db[tabla].filter((x) => x.id !== id);
     log(tabla, 'delete', fila);
     return espera(null);
   }
-  const movVisibles = () => db.movimientos.filter((m) => yo.rol === 'admin' || m.cliente_id || m.creado_por === yo.id);
+  const movVisibles = () => db.movimientos.filter((m) => yo.rol === 'admin' || m.dueno_id === yo.id || (m.cliente_id && puedeVerId(m.cliente_id)));
 
   return {
     async sesion() { return logueado ? { user: { id: yo.id } } : null; },
     async iniciarSesion(email, pass) { if (!email || !pass) throw new Error('Mail o contraseña incorrectos.'); logueado = true; },
+    async registrarse(nombre, email, pass) { if (!nombre || !email || !pass) throw new Error('Completá los campos obligatorios.'); yo.nombre = nombre; return { necesitaConfirmar: true }; },
     async estadoMfa() { return { nivel, factor: sessionStorage.getItem('demo-mfa') ? { id: 'f1' } : null }; },
     async inscribirMfa() { return { factorId: 'f1', qr: 'favicon.svg', secreto: 'DEMO-SECRETO-2FA' }; },
     async verificarMfa(_f, code) { if (!/^\d{6}$/.test(code)) throw new Error('El código no es válido o venció. Probá con el que aparece ahora en la app.'); sessionStorage.setItem('demo-mfa', '1'); nivel = 'aal2'; },
@@ -235,19 +362,110 @@ function crearDemo() {
     alCambiarSesion() {},
     async perfil() { return nivel === 'aal2' ? yo : null; },
     async registrarIngreso() { log('sesion', 'ingreso', null); },
+    async guardarPerfil(campos) {
+      if (campos.usuario != null) {
+        campos.usuario = String(campos.usuario).trim().replace(/^@/, '').toLowerCase() || null;
+        if (campos.usuario && !/^[a-z0-9._]{3,30}$/.test(campos.usuario)) throw new Error('El @usuario va de 3 a 30 caracteres: letras minúsculas, números, punto o guion bajo.');
+        if (campos.usuario === 'tomado') throw new Error('Ese @usuario ya lo usa otra persona. Probá con otro.');
+      }
+      Object.assign(yo, campos);
+      log('perfiles', 'update', yo);
+      return espera(yo);
+    },
+    async subirImagenPerfil(_p, tipo, archivo) { const p = uid(); fotos.set(p, URL.createObjectURL(archivo)); return this.guardarPerfil({ [tipo === 'banner' ? 'banner_path' : 'foto_path']: p }); },
+    urlImagenPerfil: async (p) => fotos.get(p) || null,
 
-    listarClientes: () => espera([...db.clientes].sort((a, b) => a.nombre.localeCompare(b.nombre))),
-    obtenerCliente: (id) => espera(db.clientes.find((c) => c.id === id)),
-    guardarCliente: (c) => guardar('clientes', c),
+    listarClientes: () => espera(db.clientes.filter(puedeVer).map(conIds).sort((a, b) => a.nombre.localeCompare(b.nombre))),
+    obtenerCliente: (id) => { const c = db.clientes.find((x) => x.id === id); return espera(puedeVer(c) ? conIds(c) : null); },
+    async guardarCliente(c) {
+      const { miembros_ids, ...fila } = c;
+      const antes = fila.id && db.clientes.find((x) => x.id === fila.id);
+      if (antes && !puedeVer(antes)) return sinPermiso();
+      if (antes && fila.tipo && fila.tipo !== antes.tipo && antes.dueno_id !== yo.id && yo.rol !== 'admin') return sinPermiso();
+      if (antes) delete fila.dueno_id; else fila.tipo ||= 'personal';
+      const r = await guardar('clientes', fila);
+      if (r.tipo === 'compartido' && !integrantes(r.id).some((m) => m.usuario_id === r.dueno_id)) db.miembros.push({ cliente_id: r.id, usuario_id: r.dueno_id, rol: 'dueno', creado_en: new Date().toISOString() });
+      if (r.tipo === 'personal') db.miembros = db.miembros.filter((m) => m.cliente_id !== r.id || m.usuario_id === r.dueno_id);
+      return conIds(r);
+    },
     borrarCliente: (c) => borrar('clientes', c.id),
+    async listarIntegrantes(cid) {
+      const todos = [yo, ...otrosPerfiles()];
+      return espera(integrantes(cid).map((m) => ({ ...(todos.find((p) => p.id === m.usuario_id) || { nombre: 'Cuenta' }), ...m })));
+    },
+    async agregarIntegrante(cid, buscado) {
+      const c = db.clientes.find((x) => x.id === cid);
+      if (c?.dueno_id !== yo.id && yo.rol !== 'admin') throw new Error('No tenés permiso para hacer esto.');
+      if (c.tipo !== 'compartido') throw new Error('Primero convertí el cliente en compartido.');
+      const b = String(buscado || '').trim().toLowerCase();
+      if (!b) throw new Error('Escribí el @usuario o el mail.');
+      const p = otrosPerfiles().find((x) => (b.indexOf('@') > 0 ? x.email === b : x.usuario === b.replace(/^@/, '')));
+      if (!p) throw new Error('No encontramos ninguna cuenta con ese @usuario o mail.');
+      if (integrantes(cid).some((m) => m.usuario_id === p.id)) throw new Error('Esa persona ya es integrante.');
+      db.miembros.push({ cliente_id: cid, usuario_id: p.id, rol: 'integrante', creado_en: new Date().toISOString() });
+      alFeed(cid, { tipo: 'integrante_entro', autor: yo.id, otro: p.id });
+      return espera({ id: p.id, nombre: p.nombre, usuario: p.usuario });
+    },
+    async quitarIntegrante(cid, usuarioId) {
+      const c = db.clientes.find((x) => x.id === cid);
+      const m = integrantes(cid).find((x) => x.usuario_id === usuarioId);
+      if (!m || m.rol === 'dueno' || !(usuarioId === yo.id || c.dueno_id === yo.id || yo.rol === 'admin')) return sinPermiso();
+      db.miembros = db.miembros.filter((x) => x !== m);
+      for (const t of db.tareas) if (t.cliente_id === cid && t.asignada_a === usuarioId && t.estado === 'pendiente') t.asignada_a = null;
+      alFeed(cid, { tipo: 'integrante_salio', autor: yo.id, otro: usuarioId });
+      return espera(null);
+    },
+    listarTareas: (cid) => espera(puedeVerId(cid) ? db.tareas.filter((t) => t.cliente_id === cid) : []),
+    listarMisTareas: () => espera(db.tareas.filter((t) => t.asignada_a === yo.id && t.estado === 'pendiente' && puedeVerId(t.cliente_id))
+      .map((t) => ({ ...t, clientes: { nombre: db.clientes.find((c) => c.id === t.cliente_id)?.nombre } }))),
+    async guardarTarea(t) {
+      const c = db.clientes.find((x) => x.id === (t.cliente_id || db.tareas.find((y) => y.id === t.id)?.cliente_id));
+      if (!puedeVer(c)) return sinPermiso();
+      if (c.tipo !== 'compartido') throw new Error('Las tareas son para clientes compartidos.');
+      if (t.asignada_a && !integrantes(c.id).some((m) => m.usuario_id === t.asignada_a)) throw new Error('Solo se puede asignar a integrantes del cliente.');
+      if (t.id) {
+        const v = db.tareas.find((x) => x.id === t.id);
+        const fila = v.estado === 'hecha' ? { ...t, importancia: v.importancia, asignada_a: v.asignada_a } : t;
+        if (v.estado === 'pendiente' && fila.asignada_a && fila.asignada_a !== v.asignada_a) alFeed(c.id, { tipo: 'tarea_asignada', autor: yo.id, otro: fila.asignada_a, tarea_id: v.id, texto: fila.titulo || v.titulo, puntos: v.importancia });
+        Object.assign(v, fila);
+        return espera(v);
+      }
+      const nueva = { detalle: null, vence: null, asignada_a: null, ...t, id: uid(), estado: 'pendiente', completada_por: null, completada_en: null, creado_por: yo.id, creado_en: new Date().toISOString() };
+      db.tareas.push(nueva);
+      alFeed(c.id, { tipo: 'tarea_creada', autor: yo.id, otro: nueva.asignada_a, tarea_id: nueva.id, texto: nueva.titulo, puntos: nueva.importancia });
+      return espera(nueva);
+    },
+    async completarTarea(id) {
+      const t = db.tareas.find((x) => x.id === id);
+      if (t.asignada_a && t.asignada_a !== yo.id) throw new Error('Esta tarea está asignada a otra persona: la tiene que completar ella.');
+      Object.assign(t, { estado: 'hecha', completada_por: yo.id, completada_en: new Date().toISOString() });
+      alFeed(t.cliente_id, { tipo: 'tarea_hecha', autor: yo.id, tarea_id: id, texto: t.titulo, puntos: t.importancia });
+      return espera(t);
+    },
+    async reabrirTarea(id) {
+      const t = db.tareas.find((x) => x.id === id);
+      const c = db.clientes.find((x) => x.id === t.cliente_id);
+      if (t.completada_por !== yo.id && c.dueno_id !== yo.id && yo.rol !== 'admin') throw new Error('Solo quien la completó o el dueño del cliente pueden reabrirla.');
+      alFeed(t.cliente_id, { tipo: 'tarea_reabierta', autor: yo.id, otro: t.completada_por, tarea_id: id, texto: t.titulo, puntos: t.importancia });
+      Object.assign(t, { estado: 'pendiente', completada_por: null, completada_en: null });
+      return espera(t);
+    },
+    async borrarTarea(id) {
+      const t = db.tareas.find((x) => x.id === id);
+      const c = db.clientes.find((x) => x.id === t.cliente_id);
+      if (!((t.creado_por === yo.id && t.estado === 'pendiente') || c.dueno_id === yo.id || yo.rol === 'admin')) return sinPermiso();
+      db.tareas = db.tareas.filter((x) => x !== t);
+      return espera(null);
+    },
+    listarFeed: (cid) => espera(puedeVerId(cid) ? db.feed.filter((f) => f.cliente_id === cid).sort((a, b) => b.creado_en.localeCompare(a.creado_en)) : []),
     async subirFoto(c, archivo) { const p = uid(); fotos.set(p, URL.createObjectURL(archivo)); await guardar('clientes', { id: c.id, foto_path: p }); return p; },
     urlFoto: async (p) => fotos.get(p) || null,
 
     listarHistorial: (cid) => espera(db.historial.filter((h) => h.cliente_id === cid).sort((a, b) => b.fecha.localeCompare(a.fecha))),
-    guardarHistorial: (h) => guardar('historial', h),
+    async guardarHistorial(h) { const r = await guardar('historial', h); if (!h.id) alFeed(h.cliente_id, { tipo: 'novedad', autor: yo.id, texto: h.texto.slice(0, 280) }); return r; },
     borrarHistorial: (id) => borrar('historial', id),
     listarAcuerdos: (cid) => espera(db.acuerdos.filter((a) => a.cliente_id === cid)),
-    listarTodosAcuerdos: () => espera(db.acuerdos),
+    listarTodosAcuerdos: () => espera(db.acuerdos.filter((a) => puedeVerId(a.cliente_id))),
     guardarAcuerdo: (a) => guardar('acuerdos', a),
     borrarAcuerdo: (id) => borrar('acuerdos', id),
     listarMovimientos({ desde, hasta, clienteId } = {}) {
@@ -265,7 +483,7 @@ function crearDemo() {
     urlArchivo: async (p) => fotos.get(p),
     borrarArchivo: (a) => borrar('archivos', a.id),
     listarAuditoria: () => espera(db.auditoria),
-    listarPerfiles: () => espera([yo]),
+    listarPerfiles: () => espera([yo, ...otrosPerfiles()]),
     async copia() { return { generado: new Date().toISOString(), ...structuredClone(db) }; },
   };
 }
