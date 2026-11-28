@@ -1,11 +1,14 @@
-// Aplica el estilo guardado antes de pintar la página (así no parpadea el claro).
-// El estilo de cada cuenta vive en su perfil; esto es solo el recuerdo de este dispositivo.
+// Aplica el estilo y la posición del menú guardados antes de pintar la página (así no parpadea).
+// Lo que manda es lo guardado en la cuenta; esto es solo el recuerdo de este dispositivo.
 (function () {
   try {
+    var r = document.documentElement;
     var t = localStorage.getItem('vy-tema');
     if (t === 'asal' || t === 'ice' || t === 'focus') {
-      document.documentElement.setAttribute('data-tema', t);
-      document.documentElement.setAttribute('data-modo', 'oscuro');
+      r.setAttribute('data-tema', t);
+      r.setAttribute('data-modo', 'oscuro');
     }
-  } catch (e) { /* sin almacenamiento: queda Vectyo */ }
+    var m = localStorage.getItem('vy-menu');
+    if (m === 'derecha' || m === 'arriba' || m === 'abajo') r.setAttribute('data-menu', m);
+  } catch (e) { /* sin almacenamiento: queda lo de fábrica */ }
 })();

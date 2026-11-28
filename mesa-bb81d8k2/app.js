@@ -239,6 +239,7 @@ async function iniciar() {
     if (!yo) return pantallaSinPermiso();
     // El estilo de la cuenta manda; si la base todavía no lo tiene, queda el de este dispositivo.
     await aplicarTema(yo.tema || localStorage.getItem('vy-tema'), yo.fondo_path);
+    aplicarMenu(yo.menu_pos || localStorage.getItem('vy-menu'));
     if (!sessionStorage.getItem('vy-ingreso')) { sessionStorage.setItem('vy-ingreso', '1'); datos.registrarIngreso().catch(() => {}); }
     vigilarInactividad();
     if (!yo.perfil_completo) return pantallaBienvenida();
@@ -517,6 +518,27 @@ function selectorTemas(alElegir) {
   pintar(actual);
   return grilla;
 }
+// Posición del menú en la compu (en el celular siempre va abajo).
+const POSICIONES_MENU = [['izquierda', 'Izquierda'], ['derecha', 'Derecha'], ['arriba', 'Arriba'], ['abajo', 'Abajo']];
+const posMenuValida = (m) => (POSICIONES_MENU.some((x) => x[0] === m) ? m : 'izquierda');
+function aplicarMenu(pos) {
+  const m = posMenuValida(pos);
+  if (m === 'izquierda') document.documentElement.removeAttribute('data-menu');
+  else document.documentElement.setAttribute('data-menu', m);
+  try { localStorage.setItem('vy-menu', m); } catch { /* sin almacenamiento */ }
+}
+function selectorMenu() {
+  const seg = segmento('menu-pos', POSICIONES_MENU, posMenuValida(yo?.menu_pos || localStorage.getItem('vy-menu')));
+  seg.addEventListener('change', async (ev) => {
+    aplicarMenu(ev.target.value);
+    try { yo = { ...yo, ...await datos.guardarPerfil({ menu_pos: ev.target.value }) }; }
+    catch (e) { yo = { ...yo, menu_pos: ev.target.value }; aviso(e.message, true); }
+  });
+  return h('div', { class: 'menu-pos' },
+    h('h3', { text: 'Dónde va el menú' }),
+    h('p', { class: 'chico suave', text: 'En la compu, elegí si el menú va a la izquierda, a la derecha, arriba o abajo. En el celular siempre va abajo.' }),
+    seg);
+}
 async function guardarTema(t) {
   try { yo = { ...yo, ...await datos.guardarPerfil({ tema: t }) }; }
   catch (e) { yo = { ...yo, tema: t }; aviso(e.message, true); }
@@ -698,7 +720,8 @@ function panelEstilo() {
   return h('section', { class: 'panel' }, h('h2', {}, icono('imagen'), 'Estilo del panel'),
     h('p', { class: 'suave chico bloque-abajo', text: 'Elegí cómo se ve tu panel. Se guarda en tu cuenta y te sigue en la compu y en el celular. Los demás no ven tu elección.' }),
     selectorTemas(async (t) => { await guardarTema(t); pintarExtra(); armarMarcoSinPerder(); }),
-    extra);
+    extra,
+    selectorMenu());
 }
 // Rehace el menú (logo claro u oscuro) sin recargar la vista actual.
 function armarMarcoSinPerder() {

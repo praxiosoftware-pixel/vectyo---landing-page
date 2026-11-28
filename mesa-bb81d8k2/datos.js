@@ -22,6 +22,7 @@ export function traducirError(m) {
   if (t.includes('password should') || t.includes('weak password') || t.includes('weak_password')) return 'La contraseña es muy débil. Usá al menos 12 caracteres con minúsculas, mayúsculas, números y un símbolo.';
   if (t.includes('perfiles_usuario_unico') || (t.includes('duplicate key') && t.includes('usuario'))) return 'Ese @usuario ya lo usa otra persona. Probá con otro.';
   if (t.includes('perfiles_usuario_formato')) return 'El @usuario va de 3 a 30 caracteres: letras minúsculas, números, punto o guion bajo.';
+  if (t.includes('menu_pos')) return 'No se pudo guardar la posición del menú en tu cuenta (falta correr 11-menu.sql). En este dispositivo igual queda aplicada.';
   if (t.includes('perfiles_tema_check') || (t.includes('tema') && t.includes('column'))) return 'No se pudo guardar el estilo en tu cuenta (falta correr 09-estilos.sql). En este dispositivo igual queda aplicado.';
   if (t.includes('perfiles_descripcion_largo')) return 'La descripción puede tener hasta 160 caracteres.';
   if (t.includes('fecha de nacimiento')) return 'La fecha de nacimiento no es válida (hay que tener al menos 13 años).';
@@ -289,7 +290,7 @@ function crearDemo() {
   const yo = { id: 'demo-luciano', nombre: 'Luciano (demo)', rol: ['equipo', 'usuario'].includes(rolDemo) ? rolDemo : 'admin',
     usuario: null, descripcion: null, fecha_nacimiento: null, mostrar_edad: true, foto_path: null, banner_path: null,
     instagram: null, tiktok: null, linkedin: null, x: null, web: null, whatsapp: null,
-    tema: localStorage.getItem('vy-tema') || 'vectyo', fondo_path: null,
+    tema: localStorage.getItem('vy-tema') || 'vectyo', fondo_path: null, menu_pos: localStorage.getItem('vy-menu') || 'izquierda',
     perfil_completo: new URLSearchParams(location.search).has('completo') };
   let logueado = false, nivel = 'aal1';
   const fotos = new Map();

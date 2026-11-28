@@ -324,3 +324,53 @@ select option { background: var(--superficie-max); color: var(--tinta); }
 .chat-aviso { padding: 14px; border-top: 1px solid var(--linea); text-align: center; }
 @media (max-width: 760px) { .chat { height: calc(100dvh - 190px - var(--barra-alto)); margin: -8px -4px 0; } .burbuja { max-width: 86%; } }
 [data-vista="chat"] .fab { display: none; }
+
+/* ---------- Posición del menú en la compu (2026-11-28) ----------
+   <html data-menu="derecha|arriba|abajo">. Sin atributo = izquierda.
+   En el celular el menú siempre va abajo (barra de pestañas). */
+@media (min-width: 761px) {
+  /* Derecha: el mismo panel lateral, del otro lado */
+  [data-menu="derecha"] .barra { left: auto; right: 16px; }
+  [data-menu="derecha"] main { padding-left: clamp(18px, 3vw, 44px); padding-right: calc(var(--lateral) + clamp(18px, 2.4vw, 36px)); }
+  [data-menu="derecha"] .demo { margin-left: clamp(18px, 3vw, 44px); margin-right: calc(var(--lateral) + clamp(18px, 2.4vw, 36px)); }
+  [data-menu="derecha"] .fab { right: calc(var(--lateral) + 28px); }
+  [data-tema="asal"][data-menu="derecha"] .nav a[aria-current="page"]::after { right: auto; left: -12px; }
+
+  /* Arriba y abajo: barra horizontal de vidrio, flotando */
+  [data-menu="arriba"], [data-menu="abajo"] { --lateral: 0px; }
+  [data-menu="arriba"] .barra, [data-menu="abajo"] .barra {
+    top: auto; bottom: auto; left: 50%; right: auto; transform: translateX(-50%);
+    width: min(1240px, calc(100% - 32px)); flex-direction: row; align-items: center; gap: 12px;
+    padding: 8px 10px 8px 18px; border-radius: 999px; overflow: visible;
+  }
+  [data-menu="arriba"] .barra { top: 14px; }
+  [data-menu="abajo"] .barra { bottom: 14px; }
+  [data-menu="arriba"] .marca, [data-menu="abajo"] .marca { padding: 0; }
+  [data-menu="arriba"] .nav, [data-menu="abajo"] .nav { flex: 1; flex-direction: row; justify-content: center; }
+  [data-menu="arriba"] .nav::before, [data-menu="abajo"] .nav::before { display: none; }
+  [data-menu="arriba"] .nav a, [data-menu="abajo"] .nav a { border-radius: 999px; min-height: 42px; padding: 8px 16px; gap: 8px; }
+  [data-menu="arriba"] .usuario, [data-menu="abajo"] .usuario { margin: 0; flex-direction: row; align-items: center; padding-top: 0; border-top: 0; white-space: nowrap; }
+  [data-menu="arriba"] .usuario .quien, [data-menu="abajo"] .usuario .quien { display: none !important; }
+  [data-menu="arriba"] .yo-mini, [data-menu="abajo"] .yo-mini { padding: 2px; border-radius: 999px; }
+  [data-menu="arriba"] main { padding: 104px clamp(18px, 3vw, 44px) 120px; }
+  [data-menu="arriba"] .demo { margin: 90px clamp(18px, 3vw, 44px) 0; }
+  [data-menu="arriba"] .demo + main { padding-top: 24px; }
+  [data-menu="abajo"] main { padding: 32px clamp(18px, 3vw, 44px) 150px; }
+  [data-menu="abajo"] .demo { margin: 16px clamp(18px, 3vw, 44px) 0; }
+  [data-menu="abajo"] .fab { bottom: 100px; }
+  [data-menu="abajo"] #aviso { bottom: 110px; }
+  [data-menu="abajo"] .chat { height: calc(100dvh - 210px); }
+  [data-menu="arriba"] .chat { height: calc(100dvh - 160px); }
+  /* Indicador de Asal: debajo de la opción activa */
+  [data-tema="asal"][data-menu="arriba"] .nav a[aria-current="page"]::after,
+  [data-tema="asal"][data-menu="abajo"] .nav a[aria-current="page"]::after { top: auto; bottom: -9px; left: 30%; right: 30%; width: auto; height: 3px; }
+}
+/* Barra horizontal en pantallas medianas: solo íconos (el nombre sigue para lectores de pantalla) */
+@media (min-width: 761px) and (max-width: 1120px) {
+  [data-menu="arriba"] .nav a, [data-menu="abajo"] .nav a { font-size: 0; gap: 0; padding: 8px 12px; }
+  [data-menu="arriba"] .nav a .badge, [data-menu="abajo"] .nav a .badge { font-size: .72rem; margin-left: 4px; }
+}
+/* Selector de posición (Perfil) */
+.menu-pos { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--linea); }
+.menu-pos h3 { margin-bottom: 4px; }
+.menu-pos .segmento { max-width: 520px; margin-top: 10px; }
